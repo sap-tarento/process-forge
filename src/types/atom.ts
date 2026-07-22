@@ -66,6 +66,16 @@ export type KnowledgeType =
   | "TEMPORAL_RULE"
   | "EXCEPTION";
 
+export const KNOWLEDGE_TYPES: KnowledgeType[] = [
+  "OBLIGATION", "PROHIBITION", "PERMISSION", "RESPONSIBILITY",
+  "DECISION_RULE", "DATA_REQUIREMENT", "ESCALATION", "SEQUENCE",
+  "TEMPORAL_RULE", "EXCEPTION",
+];
+
+export const ATOM_STATUSES: AtomStatus[] = [
+  "candidate", "under_review", "approved", "active", "superseded", "withdrawn",
+];
+
 // 4. Applicability
 export type PreconditionOperator =
   | "EQUALS"
