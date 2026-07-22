@@ -45,7 +45,7 @@ export interface StepRecord {
   in_count: number;
   out_count: number;
   notes: string[];
-  excluded: { atom_id: string; reason: string }[];
+  excluded?: { atom_id: string; reason: string }[];
   detail?: Record<string, unknown>;
 }
 
