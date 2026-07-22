@@ -194,3 +194,44 @@ export async function chatJson<T>(
     throw new Error(String(e));
   }
 }
+
+/**
+ * Compute an embedding vector for a piece of text using the configured provider.
+ * Returns a plain number[] so the caller can store it in a pgvector column.
+ * If the embedding provider is unavailable, throws — callers may swallow to keep
+ * the pipeline moving.
+ */
+export async function embed(
+  settings: LlmSettings,
+  input: string,
+): Promise<{ vector: number[]; model: string; provider: string }> {
+  const provider = settings.embedding_provider || settings.provider;
+  const model = settings.embedding_model || "openai/text-embedding-3-small";
+  const apiKey = providerKey({ ...settings, provider });
+
+  if (provider === "lovable") {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Lovable-API-Key": apiKey },
+      body: JSON.stringify({ model, input: input.slice(0, 8000) }),
+    });
+    if (!res.ok) throw new Error(`Lovable embed ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const data = (await res.json()) as { data?: { embedding?: number[] }[] };
+    const vec = data.data?.[0]?.embedding;
+    if (!vec) throw new Error("No embedding returned");
+    return { vector: vec, model, provider };
+  }
+  if (provider === "openai") {
+    const res = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, input: input.slice(0, 8000) }),
+    });
+    if (!res.ok) throw new Error(`OpenAI embed ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const data = (await res.json()) as { data?: { embedding?: number[] }[] };
+    const vec = data.data?.[0]?.embedding;
+    if (!vec) throw new Error("No embedding returned");
+    return { vector: vec, model, provider };
+  }
+  throw new Error(`Provider "${provider}" does not support embeddings in this gateway yet`);
+}

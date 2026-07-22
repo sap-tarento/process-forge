@@ -22,6 +22,9 @@ export const runPipeline = createServerFn({ method: "POST" })
     const { buildContextWindows } = await import("./build-windows.server");
     const { detectSpansForSource } = await import("./detect-spans.server");
     const { extractAtomsForSource } = await import("./extract-atoms.server");
+    const { groundDomainForChangeSet } = await import("./ground-tags.server");
+    const { bindProvenanceForChangeSet } = await import("./bind-provenance.server");
+    const { validateQualityForChangeSet } = await import("./validate-quality.server");
     const { PIPELINE_STAGES } = await import("@/types/atom");
 
     // Ensure the source is parsed
@@ -103,8 +106,48 @@ export const runPipeline = createServerFn({ method: "POST" })
         counts: { atoms_drafted: extract.produced, blocked_by_validation: extract.blocked } as never,
       });
 
-      // Stages 7-14 — not implemented yet
-      for (const stage of ["domain_grounding", "provenance_binding", "quality_validation", "memory_retrieval", "conflict_analysis", "change_set_generation", "human_review", "versioned_publication"]) {
+      // Stage 7 — Enterprise domain grounding + embeddings
+      await setStage("domain_grounding", { status: "running", started_at: new Date().toISOString() });
+      const grounding = await groundDomainForChangeSet(supabaseAdmin, cs.id);
+      await setStage("domain_grounding", {
+        status: "succeeded",
+        finished_at: new Date().toISOString(),
+        counts: {
+          atoms_tagged: grounding.tagged,
+          new_vocabulary_proposed: grounding.proposed,
+          atoms_embedded: grounding.embedded,
+          failed: grounding.failed,
+        } as never,
+      });
+
+      // Stage 8 — Provenance binding (deterministic)
+      await setStage("provenance_binding", { status: "running", started_at: new Date().toISOString() });
+      const provenance = await bindProvenanceForChangeSet(supabaseAdmin, cs.id);
+      await setStage("provenance_binding", {
+        status: "succeeded",
+        finished_at: new Date().toISOString(),
+        counts: {
+          evidence_bound: provenance.bound,
+          evidence_unresolved: provenance.unresolved,
+          atoms_flagged: provenance.atoms_flagged,
+        } as never,
+      });
+
+      // Stage 9 — Quality validation (4 layers)
+      await setStage("quality_validation", { status: "running", started_at: new Date().toISOString() });
+      const quality = await validateQualityForChangeSet(supabaseAdmin, cs.id);
+      await setStage("quality_validation", {
+        status: "succeeded",
+        finished_at: new Date().toISOString(),
+        counts: {
+          atoms_validated: quality.validated,
+          publication_blocked: quality.publication_blocked,
+          average_atomicity: Math.round(quality.average_atomicity * 100),
+        } as never,
+      });
+
+      // Stages 10-14 — not yet implemented
+      for (const stage of ["memory_retrieval", "conflict_analysis", "change_set_generation", "human_review", "versioned_publication"]) {
         await setStage(stage, { status: "not_implemented" });
       }
 
@@ -122,10 +165,19 @@ export const runPipeline = createServerFn({ method: "POST" })
         entity_type: "pipeline_run",
         entity_id: run.id,
         actor: context.userId,
-        payload: { windows, spans, extract } as never,
+        payload: { windows, spans, extract, grounding, provenance, quality } as never,
       });
 
-      return { run_id: run.id, change_set_id: cs.id, ...extract, spans_detected: spans.detected, windows };
+      return {
+        run_id: run.id,
+        change_set_id: cs.id,
+        ...extract,
+        spans_detected: spans.detected,
+        windows,
+        grounding,
+        provenance,
+        quality,
+      };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       await supabaseAdmin

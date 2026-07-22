@@ -760,6 +760,56 @@ export type Database = {
           },
         ]
       }
+      tag_proposals: {
+        Row: {
+          category: Database["public"]["Enums"]["domain_category"]
+          created_at: string
+          id: string
+          label: string
+          rationale: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_change_set_item: string | null
+          status: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          category: Database["public"]["Enums"]["domain_category"]
+          created_at?: string
+          id?: string
+          label: string
+          rationale?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_change_set_item?: string | null
+          status?: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          category?: Database["public"]["Enums"]["domain_category"]
+          created_at?: string
+          id?: string
+          label?: string
+          rationale?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_change_set_item?: string | null
+          status?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tag_proposals_source_change_set_item_fkey"
+            columns: ["source_change_set_item"]
+            isOneToOne: false
+            referencedRelation: "change_set_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
