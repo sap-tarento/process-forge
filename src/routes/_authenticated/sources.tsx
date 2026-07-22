@@ -138,9 +138,12 @@ function Page() {
           title="No sources registered yet"
           description="Register a policy, SOP, contract, or regulation to begin extracting process atoms. Sources are version-tracked and SHA-256 hashed for provenance."
           action={
-            canRegister
-              ? { label: "Register first source", onClick: () => setOpen(true) }
-              : undefined
+            canRegister ? (
+              <Button size="sm" onClick={() => setOpen(true)}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                Register first source
+              </Button>
+            ) : undefined
           }
         />
       )}
