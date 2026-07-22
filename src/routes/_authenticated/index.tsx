@@ -1,9 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { FileText, ClipboardCheck, AlertTriangle, Database, ShieldCheck, Atom } from "lucide-react";
+import { ATOM_STATUSES, type AtomStatus } from "@/types/atom";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -17,26 +20,45 @@ export const Route = createFileRoute("/_authenticated/")({
   component: Dashboard,
 });
 
-const lifecycle = [
-  { label: "Candidate", value: 0 },
-  { label: "Under review", value: 0 },
-  { label: "Approved", value: 0 },
-  { label: "Active", value: 0 },
-  { label: "Superseded", value: 0 },
-  { label: "Withdrawn", value: 0 },
-];
-
 function Dashboard() {
+  const stats = useQuery({
+    queryKey: ["dashboard-stats"],
+    queryFn: async () => {
+      const [atomsRes, atomsAll, sourcesRes, conflictsRes, reviewRes, recentSources] = await Promise.all([
+        supabase.from("atoms").select("id", { count: "exact", head: true }),
+        supabase.from("atoms").select("status"),
+        supabase.from("sources").select("id", { count: "exact", head: true }),
+        supabase.from("conflicts").select("id", { count: "exact", head: true }).eq("resolved", false),
+        supabase.from("change_sets").select("id", { count: "exact", head: true }).eq("status", "pending_review"),
+        supabase.from("sources").select("id, title, source_type, authority_class, created_at").order("created_at", { ascending: false }).limit(5),
+      ]);
+      const byStatus: Record<AtomStatus, number> = {
+        candidate: 0, under_review: 0, approved: 0, active: 0, superseded: 0, withdrawn: 0,
+      };
+      for (const r of atomsAll.data ?? []) byStatus[r.status as AtomStatus] = (byStatus[r.status as AtomStatus] ?? 0) + 1;
+      return {
+        atoms: atomsRes.count ?? 0,
+        sources: sourcesRes.count ?? 0,
+        conflicts: conflictsRes.count ?? 0,
+        reviews: reviewRes.count ?? 0,
+        byStatus,
+        recentSources: recentSources.data ?? [],
+      };
+    },
+  });
+
+  const s = stats.data;
+
   return (
     <AppShell
       title="Dashboard"
       description="Compilation health, review load, and conflict signal at a glance."
     >
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={Database} label="Atoms" value="0" hint="No atoms compiled yet" />
-        <StatCard icon={ClipboardCheck} label="Pending review" value="0" hint="Change sets awaiting approval" />
-        <StatCard icon={AlertTriangle} label="Open conflicts" value="0" hint="Requires resolution" />
-        <StatCard icon={FileText} label="Sources" value="0" hint="Registered documents" />
+        <StatCard icon={Database} label="Atoms" value={String(s?.atoms ?? "…")} hint={(s?.atoms ?? 0) === 0 ? "No atoms compiled yet" : "Across all lifecycle states"} />
+        <StatCard icon={ClipboardCheck} label="Pending review" value={String(s?.reviews ?? "…")} hint="Change sets awaiting approval" />
+        <StatCard icon={AlertTriangle} label="Open conflicts" value={String(s?.conflicts ?? "…")} hint="Overlap with incompatible actions" />
+        <StatCard icon={FileText} label="Sources" value={String(s?.sources ?? "…")} hint="Registered documents" />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
@@ -49,16 +71,16 @@ function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-              {lifecycle.map((s) => (
+              {ATOM_STATUSES.map((status) => (
                 <div
-                  key={s.label}
+                  key={status}
                   className="rounded-md border border-border bg-card px-3 py-2.5"
                 >
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {s.label}
+                    {status.replace("_", " ")}
                   </div>
                   <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
-                    {s.value}
+                    {s?.byStatus[status] ?? 0}
                   </div>
                 </div>
               ))}
@@ -100,11 +122,23 @@ function Dashboard() {
             <CardTitle className="text-sm">Recent sources</CardTitle>
           </CardHeader>
           <CardContent>
-            <EmptyState
-              icon={FileText}
-              title="No sources registered yet"
-              description="Add a policy, SOP, or regulation to begin compiling atoms."
-            />
+            {!s || s.recentSources.length === 0 ? (
+              <EmptyState icon={FileText} title="No sources registered yet" description="Add a policy, SOP, or regulation to begin compiling atoms." />
+            ) : (
+              <ul className="space-y-2">
+                {s.recentSources.map((src) => (
+                  <li key={src.id}>
+                    <Link to="/sources" className="block rounded-md border border-border bg-card p-2 hover:bg-muted/50">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 truncate text-sm">{src.title}</div>
+                        <Badge variant="outline" className="text-[10px]">{src.authority_class}</Badge>
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">{src.source_type} · {new Date(src.created_at).toLocaleDateString()}</div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -112,11 +146,14 @@ function Dashboard() {
             <CardTitle className="text-sm">Review queue</CardTitle>
           </CardHeader>
           <CardContent>
-            <EmptyState
-              icon={ShieldCheck}
-              title="Nothing to review"
-              description="Proposed change sets from the pipeline will appear here for governance approval."
-            />
+            {(s?.reviews ?? 0) === 0 ? (
+              <EmptyState icon={ShieldCheck} title="Nothing to review" description="Proposed change sets from the pipeline will appear here for governance approval." />
+            ) : (
+              <Link to="/review" className="block rounded-md border border-border bg-card p-3 text-sm hover:bg-muted/50">
+                <div className="font-medium">{s?.reviews} change set{s?.reviews === 1 ? "" : "s"} awaiting approval</div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">Open the review queue →</div>
+              </Link>
+            )}
           </CardContent>
         </Card>
       </div>
