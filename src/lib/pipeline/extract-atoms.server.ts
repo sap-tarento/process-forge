@@ -12,7 +12,9 @@ export async function extractAtomsForSource(
   admin: SupabaseClient<Database>,
   sourceId: string,
   changeSetId: string,
-): Promise<{ produced: number; blocked: number }> {
+  opts: { batchSize?: number } = {},
+): Promise<{ produced: number; blocked: number; remaining: number }> {
+  const batchSize = opts.batchSize ?? 3;
   const settings = await loadLlmSettings();
   const prompt = await loadActivePrompt("extraction");
 
@@ -28,9 +30,14 @@ export async function extractAtomsForSource(
         id, local_text, preceding_paragraph, following_paragraph, section_context, document_context, char_start, char_end
       )
     `)
-    .eq("source_id", sourceId);
+    .eq("source_id", sourceId)
+    .eq("status", "pending")
+    .order("id", { ascending: true })
+    .limit(batchSize);
 
-  if (!spans || spans.length === 0) return { produced: 0, blocked: 0 };
+  if (!spans || spans.length === 0) {
+    return { produced: 0, blocked: 0, remaining: 0 };
+  }
 
   let produced = 0;
   let blocked = 0;
@@ -55,6 +62,7 @@ export async function extractAtomsForSource(
     };
 
     let modelAtoms: unknown[] = [];
+    let spanFailed = false;
     try {
       const res = await chat({
         settings,
@@ -70,7 +78,7 @@ export async function extractAtomsForSource(
       if (Array.isArray(parsed.atoms)) modelAtoms = parsed.atoms;
     } catch (e) {
       console.error(`extraction failed for span ${s.id}:`, e);
-      continue;
+      spanFailed = true;
     }
 
     for (const raw of modelAtoms) {
@@ -102,7 +110,18 @@ export async function extractAtomsForSource(
       });
       if (!error) produced++;
     }
+
+    await admin
+      .from("candidate_spans")
+      .update({ status: spanFailed ? "rejected" : "accepted" } as never)
+      .eq("id", s.id);
   }
 
-  return { produced, blocked };
+  const { count } = await admin
+    .from("candidate_spans")
+    .select("id", { count: "exact", head: true })
+    .eq("source_id", sourceId)
+    .eq("status", "pending");
+
+  return { produced, blocked, remaining: count ?? 0 };
 }

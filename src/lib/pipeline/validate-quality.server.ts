@@ -146,12 +146,17 @@ export interface QualityOutcome {
 export async function validateQualityForChangeSet(
   admin: SupabaseClient<Database>,
   changeSetId: string,
-): Promise<QualityOutcome> {
+  opts: { batchSize?: number } = {},
+): Promise<QualityOutcome & { remaining: number }> {
+  const batchSize = opts.batchSize ?? 3;
   const { data: items } = await admin
     .from("change_set_items")
     .select("id, atom_payload")
-    .eq("change_set_id", changeSetId);
-  if (!items) return { validated: 0, publication_blocked: 0, average_atomicity: 0 };
+    .eq("change_set_id", changeSetId)
+    .is("validated_at", null)
+    .order("id", { ascending: true })
+    .limit(batchSize);
+  if (!items) return { validated: 0, publication_blocked: 0, average_atomicity: 0, remaining: 0 };
 
   let validated = 0;
   let blocked = 0;
@@ -159,7 +164,10 @@ export async function validateQualityForChangeSet(
 
   for (const item of items) {
     const atom = item.atom_payload as unknown as ProcessAtom;
-    if (!atom?.identity) continue;
+    if (!atom?.identity) {
+      await admin.from("change_set_items").update({ validated_at: new Date().toISOString() } as never).eq("id", item.id);
+      continue;
+    }
 
     const schema = schemaLayer(atom);
     const atomicity = atomicityLayer(atom);
@@ -187,15 +195,23 @@ export async function validateQualityForChangeSet(
         curator_notes: publicationBlocked
           ? `Publication blocked: ${[...schema.issues, ...groundedness.issues].slice(0, 3).join(" · ")}`
           : null,
+        validated_at: new Date().toISOString(),
       })
       .eq("id", item.id);
 
     validated++;
   }
 
+  const { count } = await admin
+    .from("change_set_items")
+    .select("id", { count: "exact", head: true })
+    .eq("change_set_id", changeSetId)
+    .is("validated_at", null);
+
   return {
     validated,
     publication_blocked: blocked,
     average_atomicity: validated ? +(atomicitySum / validated).toFixed(3) : 0,
+    remaining: count ?? 0,
   };
 }

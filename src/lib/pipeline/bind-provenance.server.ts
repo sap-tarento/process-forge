@@ -48,27 +48,28 @@ export interface ProvenanceOutcome {
 export async function bindProvenanceForChangeSet(
   admin: SupabaseClient<Database>,
   changeSetId: string,
-): Promise<ProvenanceOutcome> {
+): Promise<ProvenanceOutcome & { remaining: number }> {
   const { data: cs } = await admin
     .from("change_sets")
     .select("source_id")
     .eq("id", changeSetId)
     .single();
-  if (!cs?.source_id) return { bound: 0, unresolved: 0, atoms_flagged: 0 };
+  if (!cs?.source_id) return { bound: 0, unresolved: 0, atoms_flagged: 0, remaining: 0 };
 
   const [{ data: src }, { data: doc }] = await Promise.all([
     admin.from("sources").select("id, source_id, title, source_type, version").eq("id", cs.source_id).single(),
     admin.from("source_documents").select("layout").eq("source_id", cs.source_id).maybeSingle(),
   ]);
-  if (!src || !doc) return { bound: 0, unresolved: 0, atoms_flagged: 0 };
+  if (!src || !doc) return { bound: 0, unresolved: 0, atoms_flagged: 0, remaining: 0 };
   const layout = doc.layout as unknown as DocumentLayout;
   const fullText = layout?.full_text ?? "";
 
   const { data: items } = await admin
     .from("change_set_items")
     .select("id, atom_payload")
-    .eq("change_set_id", changeSetId);
-  if (!items) return { bound: 0, unresolved: 0, atoms_flagged: 0 };
+    .eq("change_set_id", changeSetId)
+    .is("provenance_bound_at", null);
+  if (!items) return { bound: 0, unresolved: 0, atoms_flagged: 0, remaining: 0 };
 
   let bound = 0;
   let unresolved = 0;
@@ -133,8 +134,11 @@ export async function bindProvenanceForChangeSet(
     if (atomHasUnresolved) flagged++;
 
     const updated: ProcessAtom = { ...atom, provenance, purpose };
-    await admin.from("change_set_items").update({ atom_payload: updated as never }).eq("id", item.id);
+    await admin
+      .from("change_set_items")
+      .update({ atom_payload: updated as never, provenance_bound_at: now } as never)
+      .eq("id", item.id);
   }
 
-  return { bound, unresolved, atoms_flagged: flagged };
+  return { bound, unresolved, atoms_flagged: flagged, remaining: 0 };
 }

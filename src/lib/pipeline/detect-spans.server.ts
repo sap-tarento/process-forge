@@ -18,28 +18,46 @@ const VALID_FORMS = new Set([
   "implicit_requirement",
 ]);
 
+export interface DetectSpansOpts {
+  batchSize?: number;
+  wipe?: boolean;
+}
+
 export async function detectSpansForSource(
   admin: SupabaseClient<Database>,
   sourceId: string,
-): Promise<{ detected: number; windows_processed: number }> {
+  opts: DetectSpansOpts = {},
+): Promise<{ detected: number; windows_processed: number; remaining: number }> {
   const settings = await loadLlmSettings();
   const prompt = await loadActivePrompt("span_detection");
+  const batchSize = opts.batchSize ?? 3;
+
+  if (opts.wipe) {
+    const { error: delErr } = await admin.from("candidate_spans").delete().eq("source_id", sourceId);
+    if (delErr) throw delErr;
+    // Reset cursor so we reprocess all windows this run
+    const { error: rstErr } = await admin
+      .from("context_windows")
+      .update({ spans_detected_at: null } as never)
+      .eq("source_id", sourceId);
+    if (rstErr) throw rstErr;
+  }
 
   const { data: windows, error } = await admin
     .from("context_windows")
     .select("id, local_text, preceding_paragraph, following_paragraph, section_context")
-    .eq("source_id", sourceId);
+    .eq("source_id", sourceId)
+    .is("spans_detected_at", null)
+    .order("id", { ascending: true })
+    .limit(batchSize);
   if (error) throw error;
-  if (!windows) return { detected: 0, windows_processed: 0 };
-
-  // Wipe previous spans for this source
-  await admin.from("candidate_spans").delete().eq("source_id", sourceId);
 
   let detected = 0;
   let processed = 0;
-  for (const w of windows) {
+  for (const w of windows ?? []) {
     // Skip trivially short blocks
     if (!w.local_text || w.local_text.trim().length < 20) {
+      await admin.from("context_windows").update({ spans_detected_at: new Date().toISOString() } as never).eq("id", w.id);
       processed++;
       continue;
     }
@@ -81,7 +99,15 @@ export async function detectSpansForSource(
     } catch (e) {
       console.error(`span_detection failed for window ${w.id}:`, e);
     }
+    await admin.from("context_windows").update({ spans_detected_at: new Date().toISOString() } as never).eq("id", w.id);
     processed++;
   }
-  return { detected, windows_processed: processed };
+
+  const { count } = await admin
+    .from("context_windows")
+    .select("id", { count: "exact", head: true })
+    .eq("source_id", sourceId)
+    .is("spans_detected_at", null);
+
+  return { detected, windows_processed: processed, remaining: count ?? 0 };
 }

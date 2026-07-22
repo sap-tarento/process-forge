@@ -2,221 +2,192 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-const Input = z.object({ sourceId: z.string().uuid() });
+// ─────────────────────────────────────────────────────────────────────────────
+// Client-driven, batch-resumable pipeline stepper.
+//
+//   startPipelineRun(sourceId)  → creates change_set + pipeline_runs + 14 stage
+//                                  rows (1–2 succeeded, 3–12 pending, 13–14 awaiting_review).
+//   advancePipelineRun(runId)   → runs ONE bounded batch of the current stage,
+//                                  data-driven via cursor columns so resuming is
+//                                  always safe. Returns { stage, done, counts }.
+//   markPipelineRunFailed(runId, reason) → curator+ escape hatch.
+//
+// Each advance call performs at most a handful of LLM calls, well under the
+// serverless request timeout. The client polls advance until done or failed.
+// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Runs pipeline stages 3 → 6 for a parsed source. Records progress per stage
- * in pipeline_run_stages. Stages 7-14 are recorded as "not_implemented".
- */
-export const runPipeline = createServerFn({ method: "POST" })
+const CURATOR_ROLES = ["admin", "curator", "policy_owner"] as const;
+
+const StartInput = z.object({ sourceId: z.string().uuid() });
+const AdvanceInput = z.object({ runId: z.string().uuid() });
+const FailInput = z.object({ runId: z.string().uuid(), reason: z.string().max(500).optional() });
+
+// Stages the auto-stepper is responsible for. Stages 1–2 are marked succeeded
+// at startup; 13–14 are awaiting_review and executed via applyChangeSet after
+// human approval.
+const AUTO_STAGES = [
+  "document_section_classification",
+  "candidate_span_detection",
+  "atomic_decomposition",
+  "phi_a_p_extraction",
+  "domain_grounding",
+  "provenance_binding",
+  "quality_validation",
+  "memory_retrieval",
+  "conflict_analysis",
+  "change_set_generation",
+] as const;
+type AutoStage = (typeof AUTO_STAGES)[number];
+
+export const startPipelineRun = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((v: unknown) => Input.parse(v))
+  .inputValidator((v: unknown) => StartInput.parse(v))
   .handler(async ({ data, context }) => {
     const { data: allowed } = await context.supabase.rpc("has_any_role", {
-      _roles: ["admin", "curator", "policy_owner"],
+      _roles: CURATOR_ROLES as unknown as ("admin" | "curator" | "policy_owner")[],
       _user_id: context.userId,
     });
     if (!allowed) throw new Error("Forbidden: curator+ role required");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { buildContextWindows } = await import("./build-windows.server");
-    const { detectSpansForSource } = await import("./detect-spans.server");
-    const { extractAtomsForSource } = await import("./extract-atoms.server");
-    const { groundDomainForChangeSet } = await import("./ground-tags.server");
-    const { bindProvenanceForChangeSet } = await import("./bind-provenance.server");
-    const { validateQualityForChangeSet } = await import("./validate-quality.server");
     const { PIPELINE_STAGES } = await import("@/types/atom");
 
-    // Ensure the source is parsed
-    const { data: src } = await supabaseAdmin
+    const { data: src, error: srcErr } = await supabaseAdmin
       .from("sources")
       .select("id, status")
       .eq("id", data.sourceId)
       .single();
+    if (srcErr) throw new Error(`Source lookup failed: ${srcErr.message}`);
     if (!src) throw new Error("Source not found");
     if (src.status === "registered") {
       throw new Error("Run 'Parse' first — source must be at least in parsed state");
     }
 
-    // Create a change_set for this run
     const { data: cs, error: csErr } = await supabaseAdmin
       .from("change_sets")
-      .insert({ source_id: data.sourceId, status: "draft", created_by: context.userId, summary: `Pipeline run ${new Date().toISOString()}` })
+      .insert({
+        source_id: data.sourceId,
+        status: "draft",
+        created_by: context.userId,
+        summary: `Pipeline run ${new Date().toISOString()}`,
+      })
       .select("id")
       .single();
-    if (csErr || !cs) throw csErr ?? new Error("Could not create change_set");
+    if (csErr || !cs) throw new Error(`change_set insert failed: ${csErr?.message ?? "unknown"}`);
 
-    // Create pipeline_runs row
     const { data: run, error: runErr } = await supabaseAdmin
       .from("pipeline_runs")
-      .insert({ source_id: data.sourceId, status: "running", triggered_by: context.userId, change_set_id: cs.id })
+      .insert({
+        source_id: data.sourceId,
+        status: "running",
+        triggered_by: context.userId,
+        change_set_id: cs.id,
+      })
       .select("id")
       .single();
-    if (runErr || !run) throw runErr ?? new Error("Could not create pipeline_run");
+    if (runErr || !run) throw new Error(`pipeline_run insert failed: ${runErr?.message ?? "unknown"}`);
 
-    // Prepare stage rows
-    const stageRows = PIPELINE_STAGES.map((stage) => ({
-      run_id: run.id,
-      stage,
-      status: stage === "source_registration" || stage === "layout_aware_parsing" ? "succeeded" : "pending",
-      counts: {} as Record<string, number>,
-    }));
-    await supabaseAdmin.from("pipeline_run_stages").insert(stageRows);
-
-    const setStage = async (stage: string, patch: Record<string, unknown>) => {
-      await supabaseAdmin
-        .from("pipeline_run_stages")
-        .update(patch as never)
-        .eq("run_id", run.id)
-        .eq("stage", stage);
-    };
-
-    try {
-      // Stage 3 — context windows
-      await setStage("document_section_classification", { status: "running", started_at: new Date().toISOString() });
-      const windows = await buildContextWindows(supabaseAdmin, data.sourceId);
-      await setStage("document_section_classification", {
-        status: "succeeded",
-        finished_at: new Date().toISOString(),
-        counts: { windows_built: windows } as never,
-      });
-
-      // Stage 4 — span detection
-      await setStage("candidate_span_detection", { status: "running", started_at: new Date().toISOString() });
-      const spans = await detectSpansForSource(supabaseAdmin, data.sourceId);
-      await setStage("candidate_span_detection", {
-        status: "succeeded",
-        finished_at: new Date().toISOString(),
-        counts: { spans_detected: spans.detected, windows_processed: spans.windows_processed } as never,
-      });
-
-      // Stages 5 + 6 — decomposition + Φ/A/P extraction (combined LLM call)
-      await setStage("atomic_decomposition", { status: "running", started_at: new Date().toISOString() });
-      await setStage("phi_a_p_extraction", { status: "running", started_at: new Date().toISOString() });
-      const extract = await extractAtomsForSource(supabaseAdmin, data.sourceId, cs.id);
-      const now = new Date().toISOString();
-      await setStage("atomic_decomposition", {
-        status: "succeeded",
-        finished_at: now,
-        counts: { atoms_drafted: extract.produced } as never,
-      });
-      await setStage("phi_a_p_extraction", {
-        status: "succeeded",
-        finished_at: now,
-        counts: { atoms_drafted: extract.produced, blocked_by_validation: extract.blocked } as never,
-      });
-
-      // Stage 7 — Enterprise domain grounding + embeddings
-      await setStage("domain_grounding", { status: "running", started_at: new Date().toISOString() });
-      const grounding = await groundDomainForChangeSet(supabaseAdmin, cs.id);
-      await setStage("domain_grounding", {
-        status: "succeeded",
-        finished_at: new Date().toISOString(),
-        counts: {
-          atoms_tagged: grounding.tagged,
-          new_vocabulary_proposed: grounding.proposed,
-          atoms_embedded: grounding.embedded,
-          failed: grounding.failed,
-        } as never,
-      });
-
-      // Stage 8 — Provenance binding (deterministic)
-      await setStage("provenance_binding", { status: "running", started_at: new Date().toISOString() });
-      const provenance = await bindProvenanceForChangeSet(supabaseAdmin, cs.id);
-      await setStage("provenance_binding", {
-        status: "succeeded",
-        finished_at: new Date().toISOString(),
-        counts: {
-          evidence_bound: provenance.bound,
-          evidence_unresolved: provenance.unresolved,
-          atoms_flagged: provenance.atoms_flagged,
-        } as never,
-      });
-
-      // Stage 9 — Quality validation (4 layers)
-      await setStage("quality_validation", { status: "running", started_at: new Date().toISOString() });
-      const quality = await validateQualityForChangeSet(supabaseAdmin, cs.id);
-      await setStage("quality_validation", {
-        status: "succeeded",
-        finished_at: new Date().toISOString(),
-        counts: {
-          atoms_validated: quality.validated,
-          publication_blocked: quality.publication_blocked,
-          average_atomicity: Math.round(quality.average_atomicity * 100),
-        } as never,
-      });
-
-      // Stage 10 — existing-memory retrieval
-      await setStage("memory_retrieval", { status: "running", started_at: new Date().toISOString() });
-      const { retrieveMemoryForChangeSet } = await import("./retrieve-memory.server");
-      const memory = await retrieveMemoryForChangeSet(supabaseAdmin, cs.id);
-      await setStage("memory_retrieval", {
-        status: "succeeded", finished_at: new Date().toISOString(),
-        counts: { items_processed: memory.items_processed, neighbors_found: memory.neighbors_found, candidates_considered: memory.candidates_considered } as never,
-      });
-
-      // Stage 11 — conflict analysis (deterministic + comparator tiebreaker)
-      await setStage("conflict_analysis", { status: "running", started_at: new Date().toISOString() });
-      const { analyzeConflictsForChangeSet } = await import("./analyze-conflicts.server");
-      const conflicts = await analyzeConflictsForChangeSet(supabaseAdmin, cs.id);
-      await setStage("conflict_analysis", {
-        status: "succeeded", finished_at: new Date().toISOString(),
-        counts: {
-          pairs_examined: conflicts.pairs_examined,
-          duplicates: conflicts.duplicates,
-          specializations: conflicts.specializations,
-          overlaps: conflicts.overlaps,
-          conflicts: conflicts.conflicts,
-          comparator_calls: conflicts.comparator_calls,
-        } as never,
-      });
-
-      // Stage 12 — contextualized change set generation
-      await setStage("change_set_generation", { status: "running", started_at: new Date().toISOString() });
-      const { generateChangeSet } = await import("./generate-change-set.server");
-      const changeset = await generateChangeSet(supabaseAdmin, cs.id);
-      await setStage("change_set_generation", {
-        status: "succeeded", finished_at: new Date().toISOString(),
-        counts: changeset as never,
-      });
-
-      // Stage 13 — awaits human review in the Review workspace
-      await setStage("human_review", { status: "awaiting_review" });
-      // Stage 14 — executed via applyChangeSet server function after approvals
-      await setStage("versioned_publication", { status: "awaiting_review" });
-
+    const stageRows = PIPELINE_STAGES.map((stage) => {
+      let status: string = "pending";
+      if (stage === "source_registration" || stage === "layout_aware_parsing") status = "succeeded";
+      if (stage === "human_review" || stage === "versioned_publication") status = "awaiting_review";
+      return { run_id: run.id, stage, status, counts: {} as Record<string, number> };
+    });
+    const { error: stagesErr } = await supabaseAdmin.from("pipeline_run_stages").insert(stageRows);
+    if (stagesErr) {
+      // Roll the run into failed so it isn't stranded at "running" with no stage rows.
       await supabaseAdmin
         .from("pipeline_runs")
-        .update({ status: "succeeded", finished_at: new Date().toISOString() })
+        .update({ status: "failed", error: `stage seed failed: ${stagesErr.message}`, finished_at: new Date().toISOString() })
         .eq("id", run.id);
-      await supabaseAdmin
-        .from("sources")
-        .update({ status: "extracted", updated_at: new Date().toISOString() })
-        .eq("id", data.sourceId);
+      throw new Error(`pipeline_run_stages seed failed: ${stagesErr.message}`);
+    }
 
-      await supabaseAdmin.from("audit_events").insert({
-        event_type: "pipeline.run.succeeded",
-        entity_type: "pipeline_run",
-        entity_id: run.id,
-        actor: context.userId,
-        payload: { windows, spans, extract, grounding, provenance, quality, memory, conflicts, changeset } as never,
+    return { run_id: run.id, change_set_id: cs.id };
+  });
+
+export const advancePipelineRun = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: unknown) => AdvanceInput.parse(v))
+  .handler(async ({ data, context }) => {
+    const { data: allowed } = await context.supabase.rpc("has_any_role", {
+      _roles: CURATOR_ROLES as unknown as ("admin" | "curator" | "policy_owner")[],
+      _user_id: context.userId,
+    });
+    if (!allowed) throw new Error("Forbidden: curator+ role required");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: run, error: runErr } = await supabaseAdmin
+      .from("pipeline_runs")
+      .select("id, source_id, status, change_set_id")
+      .eq("id", data.runId)
+      .single();
+    if (runErr || !run) throw new Error(`pipeline_run lookup failed: ${runErr?.message ?? "not found"}`);
+
+    if (run.status !== "running") {
+      return { stage: null, stage_status: null, run_status: run.status, done: true, counts: {} };
+    }
+    if (!run.change_set_id) throw new Error("Pipeline run is missing its change_set");
+
+    const { data: stages, error: stErr } = await supabaseAdmin
+      .from("pipeline_run_stages")
+      .select("id, stage, status, counts")
+      .eq("run_id", run.id);
+    if (stErr) throw new Error(`stage lookup failed: ${stErr.message}`);
+
+    const stageByName = new Map(stages?.map((s) => [s.stage, s]) ?? []);
+    const current = AUTO_STAGES.find((s) => {
+      const row = stageByName.get(s);
+      return row?.status === "pending" || row?.status === "running";
+    });
+
+    if (!current) {
+      // All auto stages done — finalize.
+      return await finalizeRun(supabaseAdmin, run.id, run.source_id, run.change_set_id, context.userId);
+    }
+
+    const stageRow = stageByName.get(current)!;
+    const firstBatch = stageRow.status === "pending";
+    if (firstBatch) {
+      await setStage(supabaseAdmin, run.id, current, {
+        status: "running",
+        started_at: new Date().toISOString(),
+      });
+    }
+
+    try {
+      const { counts, remaining } = await runStageBatch(
+        supabaseAdmin,
+        current,
+        run.source_id,
+        run.change_set_id,
+        firstBatch,
+      );
+
+      const merged = mergeCounts((stageRow.counts as Record<string, number>) ?? {}, counts);
+      const done = remaining === 0;
+      await setStage(supabaseAdmin, run.id, current, {
+        counts: merged as never,
+        ...(done
+          ? { status: "succeeded", finished_at: new Date().toISOString() }
+          : {}),
       });
 
       return {
-        run_id: run.id,
-        change_set_id: cs.id,
-        ...extract,
-        spans_detected: spans.detected,
-        windows,
-        grounding,
-        provenance,
-        quality,
-        memory,
-        conflicts,
-        changeset,
+        stage: current,
+        stage_status: done ? "succeeded" : "running",
+        run_status: "running",
+        done: false,
+        counts: merged,
       };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      await setStage(supabaseAdmin, run.id, current, {
+        status: "failed",
+        error: msg,
+        finished_at: new Date().toISOString(),
+      });
       await supabaseAdmin
         .from("pipeline_runs")
         .update({ status: "failed", error: msg, finished_at: new Date().toISOString() })
@@ -224,3 +195,202 @@ export const runPipeline = createServerFn({ method: "POST" })
       throw e;
     }
   });
+
+export const markPipelineRunFailed = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: unknown) => FailInput.parse(v))
+  .handler(async ({ data, context }) => {
+    const { data: allowed } = await context.supabase.rpc("has_any_role", {
+      _roles: CURATOR_ROLES as unknown as ("admin" | "curator" | "policy_owner")[],
+      _user_id: context.userId,
+    });
+    if (!allowed) throw new Error("Forbidden: curator+ role required");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const reason = data.reason ?? "Marked as failed by curator";
+    const { error } = await supabaseAdmin
+      .from("pipeline_runs")
+      .update({ status: "failed", error: reason, finished_at: new Date().toISOString() })
+      .eq("id", data.runId)
+      .eq("status", "running");
+    if (error) throw new Error(`Could not mark run failed: ${error.message}`);
+    return { ok: true };
+  });
+
+// ─────────────────────────── helpers ────────────────────────────
+
+type Admin = Awaited<ReturnType<typeof getAdmin>>;
+async function getAdmin() {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  return supabaseAdmin;
+}
+
+async function setStage(
+  admin: Admin,
+  runId: string,
+  stage: string,
+  patch: Record<string, unknown>,
+) {
+  const { error } = await admin
+    .from("pipeline_run_stages")
+    .update(patch as never)
+    .eq("run_id", runId)
+    .eq("stage", stage);
+  if (error) throw new Error(`stage update failed (${stage}): ${error.message}`);
+}
+
+function mergeCounts(a: Record<string, number>, b: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    out[k] = (out[k] ?? 0) + v;
+  }
+  return out;
+}
+
+async function runStageBatch(
+  admin: Admin,
+  stage: AutoStage,
+  sourceId: string,
+  changeSetId: string,
+  firstBatch: boolean,
+): Promise<{ counts: Record<string, number>; remaining: number }> {
+  switch (stage) {
+    case "document_section_classification": {
+      const { buildContextWindows } = await import("./build-windows.server");
+      const windows = await buildContextWindows(admin, sourceId);
+      return { counts: { windows_built: windows }, remaining: 0 };
+    }
+    case "candidate_span_detection": {
+      const { detectSpansForSource } = await import("./detect-spans.server");
+      const r = await detectSpansForSource(admin, sourceId, { batchSize: 3, wipe: firstBatch });
+      return {
+        counts: { spans_detected: r.detected, windows_processed: r.windows_processed },
+        remaining: r.remaining,
+      };
+    }
+    case "atomic_decomposition":
+    case "phi_a_p_extraction": {
+      // Combined per the paper (extract-atoms produces atoms with Φ/A/P in one LLM call).
+      // We only actually do work when the extraction stage is current; the OTHER of the
+      // pair completes deterministically with 0 remaining rows to process.
+      const { extractAtomsForSource } = await import("./extract-atoms.server");
+      const r = await extractAtomsForSource(admin, sourceId, changeSetId, { batchSize: 3 });
+      return {
+        counts: {
+          atoms_drafted: r.produced,
+          blocked_by_validation: r.blocked,
+        },
+        remaining: r.remaining,
+      };
+    }
+    case "domain_grounding": {
+      const { groundDomainForChangeSet } = await import("./ground-tags.server");
+      const r = await groundDomainForChangeSet(admin, changeSetId, { batchSize: 2 });
+      return {
+        counts: {
+          atoms_tagged: r.tagged,
+          new_vocabulary_proposed: r.proposed,
+          atoms_embedded: r.embedded,
+          failed: r.failed,
+        },
+        remaining: r.remaining,
+      };
+    }
+    case "provenance_binding": {
+      const { bindProvenanceForChangeSet } = await import("./bind-provenance.server");
+      const r = await bindProvenanceForChangeSet(admin, changeSetId);
+      return {
+        counts: {
+          evidence_bound: r.bound,
+          evidence_unresolved: r.unresolved,
+          atoms_flagged: r.atoms_flagged,
+        },
+        remaining: r.remaining,
+      };
+    }
+    case "quality_validation": {
+      const { validateQualityForChangeSet } = await import("./validate-quality.server");
+      const r = await validateQualityForChangeSet(admin, changeSetId, { batchSize: 3 });
+      return {
+        counts: {
+          atoms_validated: r.validated,
+          publication_blocked: r.publication_blocked,
+          average_atomicity_x100: Math.round((r.average_atomicity ?? 0) * 100),
+        },
+        remaining: r.remaining,
+      };
+    }
+    case "memory_retrieval": {
+      const { retrieveMemoryForChangeSet } = await import("./retrieve-memory.server");
+      const r = await retrieveMemoryForChangeSet(admin, changeSetId);
+      return {
+        counts: {
+          items_processed: r.items_processed,
+          neighbors_found: r.neighbors_found,
+          candidates_considered: r.candidates_considered,
+        },
+        remaining: r.remaining,
+      };
+    }
+    case "conflict_analysis": {
+      const { analyzeConflictsForChangeSet } = await import("./analyze-conflicts.server");
+      const r = await analyzeConflictsForChangeSet(admin, changeSetId, { batchSize: 5 });
+      return {
+        counts: {
+          pairs_examined: r.pairs_examined,
+          duplicates: r.duplicates,
+          specializations: r.specializations,
+          overlaps: r.overlaps,
+          conflicts: r.conflicts,
+          comparator_calls: r.comparator_calls,
+        },
+        remaining: r.remaining,
+      };
+    }
+    case "change_set_generation": {
+      const { generateChangeSet } = await import("./generate-change-set.server");
+      const r = await generateChangeSet(admin, changeSetId);
+      return { counts: r as unknown as Record<string, number>, remaining: 0 };
+    }
+  }
+}
+
+async function finalizeRun(
+  admin: Admin,
+  runId: string,
+  sourceId: string,
+  changeSetId: string,
+  actorId: string,
+) {
+  const now = new Date().toISOString();
+  // Change_set moves to pending_review inside generateChangeSet already; make sure.
+  await admin.from("change_sets").update({ status: "pending_review" } as never).eq("id", changeSetId);
+
+  const { error: sErr } = await admin
+    .from("sources")
+    .update({ status: "extracted", updated_at: now })
+    .eq("id", sourceId);
+  if (sErr) throw new Error(`source status update failed: ${sErr.message}`);
+
+  const { error: rErr } = await admin
+    .from("pipeline_runs")
+    .update({ status: "succeeded", finished_at: now })
+    .eq("id", runId);
+  if (rErr) throw new Error(`pipeline_run finalize failed: ${rErr.message}`);
+
+  await admin.from("audit_events").insert({
+    event_type: "pipeline.run.succeeded",
+    entity_type: "pipeline_run",
+    entity_id: runId,
+    actor: actorId,
+    payload: { change_set_id: changeSetId } as never,
+  });
+
+  return {
+    stage: null,
+    stage_status: null,
+    run_status: "succeeded",
+    done: true,
+    counts: {} as Record<string, number>,
+  };
+}

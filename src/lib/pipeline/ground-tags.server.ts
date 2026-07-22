@@ -51,7 +51,9 @@ function serializeAtomForEmbedding(a: ProcessAtom): string {
 export async function groundDomainForChangeSet(
   admin: SupabaseClient<Database>,
   changeSetId: string,
-): Promise<{ tagged: number; proposed: number; embedded: number; failed: number }> {
+  opts: { batchSize?: number } = {},
+): Promise<{ tagged: number; proposed: number; embedded: number; failed: number; remaining: number }> {
+  const batchSize = opts.batchSize ?? 2;
   const settings = await loadLlmSettings();
   const prompt = await loadActivePrompt("tag_assignment");
 
@@ -71,8 +73,11 @@ export async function groundDomainForChangeSet(
   const { data: items } = await admin
     .from("change_set_items")
     .select("id, atom_payload")
-    .eq("change_set_id", changeSetId);
-  if (!items) return { tagged: 0, proposed: 0, embedded: 0, failed: 0 };
+    .eq("change_set_id", changeSetId)
+    .is("grounded_at", null)
+    .order("id", { ascending: true })
+    .limit(batchSize);
+  if (!items) return { tagged: 0, proposed: 0, embedded: 0, failed: 0, remaining: 0 };
 
   let tagged = 0;
   let proposed = 0;
@@ -81,7 +86,10 @@ export async function groundDomainForChangeSet(
 
   for (const item of items) {
     const atom = item.atom_payload as unknown as ProcessAtom;
-    if (!atom || !atom.identity) continue;
+    if (!atom || !atom.identity) {
+      await admin.from("change_set_items").update({ grounded_at: new Date().toISOString() } as never).eq("id", item.id);
+      continue;
+    }
 
     const payload = {
       ATOM_NAME: atom.identity.name,
@@ -165,6 +173,7 @@ export async function groundDomainForChangeSet(
 
     const updatePayload: Record<string, unknown> = { atom_payload: updated as never };
     if (embVec) updatePayload.atom_embedding = embVec as never;
+    updatePayload.grounded_at = new Date().toISOString();
 
     await admin
       .from("change_set_items")
@@ -174,5 +183,11 @@ export async function groundDomainForChangeSet(
     tagged++;
   }
 
-  return { tagged, proposed, embedded, failed };
+  const { count } = await admin
+    .from("change_set_items")
+    .select("id", { count: "exact", head: true })
+    .eq("change_set_id", changeSetId)
+    .is("grounded_at", null);
+
+  return { tagged, proposed, embedded, failed, remaining: count ?? 0 };
 }

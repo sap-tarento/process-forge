@@ -110,7 +110,7 @@ export interface MemoryRetrievalOutcome {
 export async function retrieveMemoryForChangeSet(
   admin: SupabaseClient<Database>,
   changeSetId: string,
-): Promise<MemoryRetrievalOutcome> {
+): Promise<MemoryRetrievalOutcome & { remaining: number }> {
   const { data: cs } = await admin
     .from("change_sets")
     .select("source_id")
@@ -121,7 +121,7 @@ export async function retrieveMemoryForChangeSet(
     .from("change_set_items")
     .select("id, atom_payload, atom_embedding")
     .eq("change_set_id", changeSetId);
-  if (!items?.length) return { items_processed: 0, neighbors_found: 0, candidates_considered: 0 };
+  if (!items?.length) return { items_processed: 0, neighbors_found: 0, candidates_considered: 0, remaining: 0 };
 
   // Load the current governed memory (active + approved). This is bounded by
   // typical enterprise memory size; production would page or shard.
@@ -204,5 +204,5 @@ export async function retrieveMemoryForChangeSet(
     processed++;
   }
 
-  return { items_processed: processed, neighbors_found: totalNeighbors, candidates_considered: memory.length };
+  return { items_processed: processed, neighbors_found: totalNeighbors, candidates_considered: memory.length, remaining: 0 };
 }

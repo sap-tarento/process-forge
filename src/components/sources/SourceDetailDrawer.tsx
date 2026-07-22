@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { STATUS_LABEL, SOURCE_TYPE_LABEL } from "@/lib/source-types";
 import { useMyRoles, hasAnyRole } from "@/hooks/useAuth";
 import { parseSource } from "@/lib/pipeline/parse-source.functions";
-import { runPipeline } from "@/lib/pipeline/run-pipeline.functions";
+import { startPipelineRun, advancePipelineRun } from "@/lib/pipeline/run-pipeline.functions";
 import { FileSearch, Play, Loader2 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -26,7 +26,8 @@ export function SourceDetailDrawer({ sourceId, onClose }: Props) {
   const { data: roles } = useMyRoles();
   const canRun = hasAnyRole(roles, ["admin", "curator", "policy_owner"]);
   const parseFn = useServerFn(parseSource);
-  const runFn = useServerFn(runPipeline);
+  const startFn = useServerFn(startPipelineRun);
+  const advanceFn = useServerFn(advancePipelineRun);
 
   const { data } = useQuery({
     queryKey: ["source-detail", sourceId],
@@ -49,9 +50,23 @@ export function SourceDetailDrawer({ sourceId, onClose }: Props) {
   });
 
   const runMut = useMutation({
-    mutationFn: () => runFn({ data: { sourceId: sourceId! } }),
-    onSuccess: (r) => {
-      toast.success(`Pipeline complete — ${r.produced} atoms drafted from ${r.spans_detected} spans`);
+    mutationFn: async () => {
+      const { run_id } = await startFn({ data: { sourceId: sourceId! } });
+      toast.info("Pipeline running — keep this tab open.");
+      // Drive the stepper until done or failed.
+      // Safety cap prevents runaway loops if a stage never converges.
+      for (let i = 0; i < 500; i++) {
+        const step = await advanceFn({ data: { runId: run_id } });
+        qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+        qc.invalidateQueries({ queryKey: ["pipeline-run-stages", run_id] });
+        if (step.run_status === "succeeded") return { run_id, done: true };
+        if (step.run_status === "failed") throw new Error("Pipeline failed — see Pipeline page for details.");
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      throw new Error("Pipeline did not complete within the safety cap. Use Resume on the Pipeline page.");
+    },
+    onSuccess: () => {
+      toast.success("Pipeline complete — review the change set in Review.");
       qc.invalidateQueries({ queryKey: ["sources"] });
       qc.invalidateQueries({ queryKey: ["source-detail", sourceId] });
       qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
@@ -118,7 +133,7 @@ export function SourceDetailDrawer({ sourceId, onClose }: Props) {
                   disabled={runMut.isPending || parseMut.isPending || data.status === "registered"}
                 >
                   {runMut.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Play className="mr-1.5 h-3.5 w-3.5" />}
-                  Run pipeline (Stages 3–6)
+                  Run pipeline (Stages 3–12)
                 </Button>
               </div>
             )}
