@@ -78,7 +78,15 @@ export const rejectItem = createServerFn({ method: "POST" })
 
 const ConfirmScopeInput = z.object({
   itemId: z.string().uuid(),
-  dimension: z.enum(["process", "activities", "roles", "business_objects"]),
+  dimension: z.enum([
+    "process",
+    "activities",
+    "roles",
+    "business_objects",
+    "organizational_scope.company_codes",
+    "organizational_scope.subsidiaries",
+    "organizational_scope.plants",
+  ]),
   value: z.array(z.string()).nullable(),
   status: z.enum(["explicit", "inherited", "inferred", "not_stated"]),
 });
@@ -92,13 +100,21 @@ export const confirmScopeDimension = createServerFn({ method: "POST" })
     if (!item) throw new Error("Item not found");
     const atom = item.atom_payload as unknown as ProcessAtom;
     const app = { ...(atom.applicability ?? {}) } as Record<string, unknown>;
-    app[data.dimension] = {
+    const confirmed = {
       value: data.value,
       status: data.status,
       requires_review: false,
       human_confirmed_by: context.userId,
       human_confirmed_at: new Date().toISOString(),
     };
+    if (data.dimension.startsWith("organizational_scope.")) {
+      const sub = data.dimension.split(".")[1] as "company_codes" | "subsidiaries" | "plants";
+      const orgs = { ...((app.organizational_scope as Record<string, unknown> | undefined) ?? {}) };
+      orgs[sub] = confirmed;
+      app.organizational_scope = orgs;
+    } else {
+      app[data.dimension] = confirmed;
+    }
     const updated: ProcessAtom = { ...atom, applicability: app as unknown as ProcessAtom["applicability"] };
     await supabaseAdmin.from("change_set_items").update({ atom_payload: updated as never } as never).eq("id", data.itemId);
     await supabaseAdmin.from("audit_events").insert({

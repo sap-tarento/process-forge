@@ -50,6 +50,12 @@ function findBlockingFields(atom: ProcessAtom): string[] {
     ["activities", app.activities],
     ["roles", app.roles],
     ["business_objects", app.business_objects],
+    // Organizational scope dimensions — the paper's canonical failure case is a
+    // missing SUBSIDIARY restriction. Any of these still flagged requires_review
+    // (i.e. not human-confirmed) blocks publication just like the top-level dims.
+    ["organizational_scope.company_codes", app.organizational_scope?.company_codes],
+    ["organizational_scope.subsidiaries", app.organizational_scope?.subsidiaries],
+    ["organizational_scope.plants", app.organizational_scope?.plants],
   ];
   for (const [k, v] of dims) {
     if (v?.requires_review) blockers.push(`applicability.${k}(requires_review)`);

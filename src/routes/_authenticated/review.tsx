@@ -165,7 +165,7 @@ function ItemCard({ item, csId }: { item: ReviewItem; csId: string }) {
   const [editOpen, setEditOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
-  const [confirmDim, setConfirmDim] = useState<null | { key: "process" | "activities" | "roles" | "business_objects"; label: string }>(null);
+  const [confirmDim, setConfirmDim] = useState<null | { key: ScopeDimKey; label: string }>(null);
   const op = OP_META[item.operation ?? "add"] ?? OP_META.add;
   const isConflict = item.operation === "conflict_review";
   const decided = item.review_status !== "pending";
@@ -225,19 +225,29 @@ function ItemCard({ item, csId }: { item: ReviewItem; csId: string }) {
             </div>
             {/* Scope confirmation strip */}
             <div className="mb-3 space-y-1.5">
-              {(["process","activities","roles","business_objects"] as const).map((k) => {
-                const sv = (atom.applicability as unknown as Record<string, { requires_review?: boolean; status?: string; value?: unknown }> | undefined)?.[k];
-                if (!sv?.requires_review) return null;
-                return (
-                  <Alert key={k} className="py-2">
-                    <AlertTitle className="text-xs">Scope requires human confirmation: {k}</AlertTitle>
+              {(() => {
+                type DimKey =
+                  | "process" | "activities" | "roles" | "business_objects"
+                  | "organizational_scope.company_codes"
+                  | "organizational_scope.subsidiaries"
+                  | "organizational_scope.plants";
+                const top = ["process","activities","roles","business_objects"] as const;
+                const org = ["company_codes","subsidiaries","plants"] as const;
+                const appAny = atom.applicability as unknown as Record<string, { requires_review?: boolean; status?: string; value?: unknown } | undefined> | undefined;
+                const orgScope = appAny?.organizational_scope as unknown as Record<string, { requires_review?: boolean; status?: string; value?: unknown } | undefined> | undefined;
+                const rows: { key: DimKey; sv: { requires_review?: boolean; status?: string; value?: unknown } }[] = [];
+                for (const k of top) { const sv = appAny?.[k]; if (sv?.requires_review) rows.push({ key: k, sv }); }
+                for (const k of org) { const sv = orgScope?.[k]; if (sv?.requires_review) rows.push({ key: `organizational_scope.${k}` as DimKey, sv }); }
+                return rows.map(({ key, sv }) => (
+                  <Alert key={key} className="py-2">
+                    <AlertTitle className="text-xs">Scope requires human confirmation: {key}</AlertTitle>
                     <AlertDescription className="text-xs text-muted-foreground flex items-center justify-between gap-2">
                       <span>Status: <Badge variant="outline" className="text-[10px]">{sv.status}</Badge></span>
-                      <Button size="sm" variant="outline" onClick={() => setConfirmDim({ key: k, label: k })}>Confirm scope</Button>
+                      <Button size="sm" variant="outline" onClick={() => setConfirmDim({ key, label: key })}>Confirm scope</Button>
                     </AlertDescription>
                   </Alert>
-                );
-              })}
+                ));
+              })()}
             </div>
             {open && <AtomDetail atom={atom} />}
             {!open && atom.provenance?.quoted_evidence?.length > 0 && (
@@ -270,13 +280,16 @@ function ItemCard({ item, csId }: { item: ReviewItem; csId: string }) {
                 <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Findings ({conflictFindings.length})</div>
                 <ul className="space-y-1">
                   {conflictFindings.map((f, i) => (
-                    <li key={i} className="rounded border border-border p-2 text-xs">
+                    <li key={i} className={`rounded border p-2 text-xs ${f.verdict === "inconclusive" ? "border-amber-500/40 bg-amber-500/5" : "border-border"}`}>
                       <div className="flex items-center justify-between">
                         <span className="font-mono">{f.neighbor_atom_id}</span>
-                        <Badge variant="outline" className={`text-[10px] ${f.verdict === "overlap_conflict" ? "border-red-500/40 text-red-700 dark:text-red-300" : ""}`}>{f.verdict}</Badge>
+                        <Badge variant="outline" className={`text-[10px] ${f.verdict === "overlap_conflict" ? "border-red-500/40 text-red-700 dark:text-red-300" : f.verdict === "inconclusive" ? "border-amber-500/40 text-amber-700 dark:text-amber-300" : ""}`}>{f.verdict}</Badge>
                       </div>
                       <div className="mt-1 text-muted-foreground">{f.detail?.reason}</div>
-                      <div className="mt-1 text-[10px] text-muted-foreground">via {f.source}</div>
+                      <div className="mt-1 text-[10px] text-muted-foreground">
+                        via {f.source}
+                        {f.verdict === "inconclusive" && <span className="ml-1 text-amber-700 dark:text-amber-300">· requires human judgment — unknown is never assumed compatible</span>}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -309,13 +322,27 @@ function ItemCard({ item, csId }: { item: ReviewItem; csId: string }) {
       {rejectOpen && <RejectDialog itemId={item.id} onClose={() => { setRejectOpen(false); invalidate(); }} />}
       {editOpen && <EditDialog itemId={item.id} atom={atom} onClose={() => { setEditOpen(false); invalidate(); }} />}
       {resolveOpen && <ResolveDialog itemId={item.id} findings={conflictFindings} onClose={() => { setResolveOpen(false); invalidate(); }} />}
-      {confirmDim && <ConfirmScopeDialog itemId={item.id} dim={confirmDim.key} current={((atom.applicability as unknown as Record<string, { value?: string[] }>)[confirmDim.key])?.value ?? []} onClose={() => { setConfirmDim(null); invalidate(); }} />}
+      {confirmDim && <ConfirmScopeDialog itemId={item.id} dim={confirmDim.key} current={readScopeValues(atom, confirmDim.key)} onClose={() => { setConfirmDim(null); invalidate(); }} />}
     </Card>
   );
 }
 
 interface NeighborRef { atom_db_id: string; atom_id: string; version: number; score?: number }
 interface ConflictFinding { neighbor_atom_id: string; verdict: string; source: string; detail: { reason: string } }
+
+type ScopeDimKey =
+  | "process" | "activities" | "roles" | "business_objects"
+  | "organizational_scope.company_codes"
+  | "organizational_scope.subsidiaries"
+  | "organizational_scope.plants";
+
+function readScopeValues(atom: ProcessAtom, key: ScopeDimKey): string[] {
+  const app = atom.applicability as unknown as Record<string, { value?: unknown } | undefined> | undefined;
+  const raw = key.startsWith("organizational_scope.")
+    ? ((app?.organizational_scope as unknown as Record<string, { value?: unknown } | undefined> | undefined)?.[key.split(".")[1]])?.value
+    : app?.[key]?.value;
+  return Array.isArray(raw) ? (raw as string[]) : [];
+}
 
 function RejectDialog({ itemId, onClose }: { itemId: string; onClose: () => void }) {
   const [reason, setReason] = useState("");
@@ -367,7 +394,7 @@ function EditDialog({ itemId, atom, onClose }: { itemId: string; atom: ProcessAt
   );
 }
 
-function ConfirmScopeDialog({ itemId, dim, current, onClose }: { itemId: string; dim: "process" | "activities" | "roles" | "business_objects"; current: string[]; onClose: () => void }) {
+function ConfirmScopeDialog({ itemId, dim, current, onClose }: { itemId: string; dim: ScopeDimKey; current: string[]; onClose: () => void }) {
   const [values, setValues] = useState(current.join(", "));
   const [status, setStatus] = useState<"explicit" | "inherited" | "inferred" | "not_stated">("explicit");
   const confirm = useServerFn(confirmScopeDimension);
