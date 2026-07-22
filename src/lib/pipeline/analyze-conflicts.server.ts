@@ -251,12 +251,19 @@ export function verdictToRelationship(v: Verdict): RelationshipType | null {
 export async function analyzeConflictsForChangeSet(
   admin: SupabaseClient<Database>,
   changeSetId: string,
-): Promise<ConflictAnalysisOutcome> {
+  opts: { batchSize?: number } = {},
+): Promise<ConflictAnalysisOutcome & { remaining: number }> {
+  const batchSize = opts.batchSize ?? 5;
   const { data: items } = await admin
     .from("change_set_items")
     .select("id, atom_payload, neighbors")
-    .eq("change_set_id", changeSetId);
-  if (!items?.length) return { pairs_examined: 0, duplicates: 0, specializations: 0, overlaps: 0, conflicts: 0, comparator_calls: 0 };
+    .eq("change_set_id", changeSetId)
+    .is("curated_at", null)
+    .order("id", { ascending: true })
+    .limit(batchSize);
+  if (!items?.length) {
+    return { pairs_examined: 0, duplicates: 0, specializations: 0, overlaps: 0, conflicts: 0, comparator_calls: 0, remaining: 0 };
+  }
 
   const neighborIds = new Set<string>();
   for (const it of items) {
@@ -387,7 +394,18 @@ export async function analyzeConflictsForChangeSet(
     if (conflictRows.length) {
       await admin.from("conflicts").insert(conflictRows as never);
     }
+
+    await admin
+      .from("change_set_items")
+      .update({ curated_at: new Date().toISOString() } as never)
+      .eq("id", item.id);
   }
 
-  return out;
+  const { count } = await admin
+    .from("change_set_items")
+    .select("id", { count: "exact", head: true })
+    .eq("change_set_id", changeSetId)
+    .is("curated_at", null);
+
+  return { ...out, remaining: count ?? 0 };
 }
