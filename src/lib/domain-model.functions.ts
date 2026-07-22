@@ -53,7 +53,7 @@ export const updateDomainEntry = createServerFn({ method: "POST" })
   .inputValidator((v: unknown) => UpdateInput.parse(v))
   .handler(async ({ data, context }) => {
     await requireCurator(context);
-    const patch: Record<string, unknown> = {};
+    const patch: { label?: string; parent_id?: string | null } = {};
     if (data.label !== undefined) patch.label = data.label;
     if (data.parent_id !== undefined) patch.parent_id = data.parent_id;
     const { error } = await context.supabase.from("domain_model").update(patch).eq("id", data.id);
