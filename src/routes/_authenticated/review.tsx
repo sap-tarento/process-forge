@@ -165,7 +165,7 @@ function ItemCard({ item, csId }: { item: ReviewItem; csId: string }) {
   const [editOpen, setEditOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
-  const [confirmDim, setConfirmDim] = useState<null | { key: "process" | "activities" | "roles" | "business_objects"; label: string }>(null);
+  const [confirmDim, setConfirmDim] = useState<null | { key: ScopeDimKey; label: string }>(null);
   const op = OP_META[item.operation ?? "add"] ?? OP_META.add;
   const isConflict = item.operation === "conflict_review";
   const decided = item.review_status !== "pending";
@@ -322,7 +322,7 @@ function ItemCard({ item, csId }: { item: ReviewItem; csId: string }) {
       {rejectOpen && <RejectDialog itemId={item.id} onClose={() => { setRejectOpen(false); invalidate(); }} />}
       {editOpen && <EditDialog itemId={item.id} atom={atom} onClose={() => { setEditOpen(false); invalidate(); }} />}
       {resolveOpen && <ResolveDialog itemId={item.id} findings={conflictFindings} onClose={() => { setResolveOpen(false); invalidate(); }} />}
-      {confirmDim && <ConfirmScopeDialog itemId={item.id} dim={confirmDim.key} current={((atom.applicability as unknown as Record<string, { value?: string[] }>)[confirmDim.key])?.value ?? []} onClose={() => { setConfirmDim(null); invalidate(); }} />}
+      {confirmDim && <ConfirmScopeDialog itemId={item.id} dim={confirmDim.key} current={readScopeValues(atom, confirmDim.key)} onClose={() => { setConfirmDim(null); invalidate(); }} />}
     </Card>
   );
 }
@@ -380,7 +380,7 @@ function EditDialog({ itemId, atom, onClose }: { itemId: string; atom: ProcessAt
   );
 }
 
-function ConfirmScopeDialog({ itemId, dim, current, onClose }: { itemId: string; dim: "process" | "activities" | "roles" | "business_objects"; current: string[]; onClose: () => void }) {
+function ConfirmScopeDialog({ itemId, dim, current, onClose }: { itemId: string; dim: ScopeDimKey; current: string[]; onClose: () => void }) {
   const [values, setValues] = useState(current.join(", "));
   const [status, setStatus] = useState<"explicit" | "inherited" | "inferred" | "not_stated">("explicit");
   const confirm = useServerFn(confirmScopeDimension);
