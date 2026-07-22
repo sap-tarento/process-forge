@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { Separator } from "@/components/ui/separator";
+import { NotificationBell } from "./NotificationBell";
 
 interface AppShellProps {
   title: string;
@@ -27,7 +28,10 @@ export function AppShell({ title, description, actions, children }: AppShellProp
                 <p className="truncate text-xs text-muted-foreground">{description}</p>
               )}
             </div>
-            {actions && <div className="flex items-center gap-2">{actions}</div>}
+            <div className="flex items-center gap-2">
+              {actions}
+              <NotificationBell />
+            </div>
           </header>
           <main className="flex-1 overflow-x-hidden px-6 py-6">{children}</main>
         </div>

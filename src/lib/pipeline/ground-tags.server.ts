@@ -164,11 +164,11 @@ export async function groundDomainForChangeSet(
     }
 
     const updatePayload: Record<string, unknown> = { atom_payload: updated as never };
-    if (embVec) updatePayload.atom_embedding = embVec;
+    if (embVec) updatePayload.atom_embedding = embVec as never;
 
     await admin
       .from("change_set_items")
-      .update({ atom_payload: updated as never })
+      .update(updatePayload as never)
       .eq("id", item.id);
 
     tagged++;

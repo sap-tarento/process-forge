@@ -146,10 +146,44 @@ export const runPipeline = createServerFn({ method: "POST" })
         } as never,
       });
 
-      // Stages 10-14 — not yet implemented
-      for (const stage of ["memory_retrieval", "conflict_analysis", "change_set_generation", "human_review", "versioned_publication"]) {
-        await setStage(stage, { status: "not_implemented" });
-      }
+      // Stage 10 — existing-memory retrieval
+      await setStage("memory_retrieval", { status: "running", started_at: new Date().toISOString() });
+      const { retrieveMemoryForChangeSet } = await import("./retrieve-memory.server");
+      const memory = await retrieveMemoryForChangeSet(supabaseAdmin, cs.id);
+      await setStage("memory_retrieval", {
+        status: "succeeded", finished_at: new Date().toISOString(),
+        counts: { items_processed: memory.items_processed, neighbors_found: memory.neighbors_found, candidates_considered: memory.candidates_considered } as never,
+      });
+
+      // Stage 11 — conflict analysis (deterministic + comparator tiebreaker)
+      await setStage("conflict_analysis", { status: "running", started_at: new Date().toISOString() });
+      const { analyzeConflictsForChangeSet } = await import("./analyze-conflicts.server");
+      const conflicts = await analyzeConflictsForChangeSet(supabaseAdmin, cs.id);
+      await setStage("conflict_analysis", {
+        status: "succeeded", finished_at: new Date().toISOString(),
+        counts: {
+          pairs_examined: conflicts.pairs_examined,
+          duplicates: conflicts.duplicates,
+          specializations: conflicts.specializations,
+          overlaps: conflicts.overlaps,
+          conflicts: conflicts.conflicts,
+          comparator_calls: conflicts.comparator_calls,
+        } as never,
+      });
+
+      // Stage 12 — contextualized change set generation
+      await setStage("change_set_generation", { status: "running", started_at: new Date().toISOString() });
+      const { generateChangeSet } = await import("./generate-change-set.server");
+      const changeset = await generateChangeSet(supabaseAdmin, cs.id);
+      await setStage("change_set_generation", {
+        status: "succeeded", finished_at: new Date().toISOString(),
+        counts: changeset as never,
+      });
+
+      // Stage 13 — awaits human review in the Review workspace
+      await setStage("human_review", { status: "awaiting_review" });
+      // Stage 14 — executed via applyChangeSet server function after approvals
+      await setStage("versioned_publication", { status: "awaiting_review" });
 
       await supabaseAdmin
         .from("pipeline_runs")
@@ -165,7 +199,7 @@ export const runPipeline = createServerFn({ method: "POST" })
         entity_type: "pipeline_run",
         entity_id: run.id,
         actor: context.userId,
-        payload: { windows, spans, extract, grounding, provenance, quality } as never,
+        payload: { windows, spans, extract, grounding, provenance, quality, memory, conflicts, changeset } as never,
       });
 
       return {
@@ -177,6 +211,9 @@ export const runPipeline = createServerFn({ method: "POST" })
         grounding,
         provenance,
         quality,
+        memory,
+        conflicts,
+        changeset,
       };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
