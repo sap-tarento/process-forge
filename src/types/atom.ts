@@ -140,15 +140,16 @@ export interface AtomDomainTags {
   organizational_unit: string[];
 }
 
-// 8. Provenance
+// 8. Provenance — SourceType aligned with sources.source_type enum in the DB.
 export type SourceType =
-  | "policy"
-  | "sop"
-  | "regulation"
-  | "contract"
-  | "training"
-  | "email"
-  | "other";
+  | "POLICY"
+  | "SOP"
+  | "REGULATION"
+  | "ERP_CONFIG"
+  | "EVENT_LOG"
+  | "AGENT_TRACE"
+  | "BPMN_MODEL"
+  | "EXPERT_INPUT";
 
 export interface QuotedEvidence {
   text: string;
@@ -210,14 +211,12 @@ export interface AtomRelationship {
   note?: string;
 }
 
-// 11. Quality
+// 11. Quality — the paper's four validation layers.
 export type ValidationLayer =
+  | "schema"
+  | "semantic_completeness"
   | "atomicity"
-  | "grounding"
-  | "scope_safety"
-  | "action_completeness"
-  | "conflict"
-  | "governance";
+  | "groundedness";
 
 export interface ValidationResult {
   layer: ValidationLayer;
@@ -232,6 +231,8 @@ export interface AtomQuality {
   purpose_confidence: number;
   atomicity_score: number;
   validations: ValidationResult[];
+  // DESCRIPTIVE-source atoms are flagged here and stay `candidate` forever.
+  candidate_observed_practice?: boolean;
 }
 
 // The Atom
@@ -249,22 +250,56 @@ export interface ProcessAtom {
   quality: AtomQuality;
 }
 
-// 14-stage compilation pipeline
+// 14-stage compilation pipeline (Tarento Labs paper).
 export const PIPELINE_STAGES = [
-  "ingest",
-  "parse",
-  "segment",
-  "classify",
-  "extract_candidates",
-  "resolve_scope",
-  "resolve_action",
-  "resolve_purpose",
-  "tag_domain",
-  "ground_evidence",
-  "detect_conflicts",
-  "score_quality",
-  "assemble_change_set",
-  "queue_for_review",
+  "source_registration",
+  "layout_aware_parsing",
+  "document_section_classification",
+  "candidate_span_detection",
+  "atomic_decomposition",
+  "phi_a_p_extraction",
+  "domain_grounding",
+  "provenance_binding",
+  "quality_validation",
+  "memory_retrieval",
+  "conflict_analysis",
+  "change_set_generation",
+  "human_review",
+  "versioned_publication",
 ] as const;
 
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+
+export const STAGE_LABELS: Record<PipelineStage, string> = {
+  source_registration: "Source registration & fingerprinting",
+  layout_aware_parsing: "Layout-aware parsing",
+  document_section_classification: "Document / section classification",
+  candidate_span_detection: "Candidate normative span detection",
+  atomic_decomposition: "Atomic decomposition",
+  phi_a_p_extraction: "Applicability / Action / Purpose extraction",
+  domain_grounding: "Enterprise domain grounding",
+  provenance_binding: "Provenance binding",
+  quality_validation: "Quality validation",
+  memory_retrieval: "Existing-memory retrieval",
+  conflict_analysis: "Duplicate / overlap / conflict analysis",
+  change_set_generation: "Contextualized change-set generation",
+  human_review: "Human review & approval",
+  versioned_publication: "Versioned atomic publication",
+};
+
+export const STAGE_SHORT_LABELS: Record<PipelineStage, string> = {
+  source_registration: "Registration",
+  layout_aware_parsing: "Parsing",
+  document_section_classification: "Context windows",
+  candidate_span_detection: "Span detection",
+  atomic_decomposition: "Decomposition",
+  phi_a_p_extraction: "Φ / A / P extraction",
+  domain_grounding: "Domain grounding",
+  provenance_binding: "Provenance",
+  quality_validation: "Validation",
+  memory_retrieval: "Memory retrieval",
+  conflict_analysis: "Conflict analysis",
+  change_set_generation: "Change set",
+  human_review: "Human review",
+  versioned_publication: "Publication",
+};
