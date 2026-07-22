@@ -1,18 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { FileText, Plus, ShieldAlert, Search } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { toast } from "sonner";
+import { FileText, Plus, ShieldAlert, Search, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
 import { RegisterSourceDialog } from "@/components/sources/RegisterSourceDialog";
 import { SourceDetailDrawer } from "@/components/sources/SourceDetailDrawer";
 import { STATUS_LABEL, SOURCE_TYPE_LABEL } from "@/lib/source-types";
 import { useMyRoles, hasAnyRole } from "@/hooks/useAuth";
+import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
+import { SelectionBar } from "@/components/common/SelectionBar";
+import { deleteSources } from "@/lib/management.functions";
 import type { Database } from "@/integrations/supabase/types";
 
 type Source = Database["public"]["Tables"]["sources"]["Row"];
@@ -33,8 +39,13 @@ function Page() {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmIds, setConfirmIds] = useState<string[] | null>(null);
   const { data: roles } = useMyRoles();
   const canRegister = hasAnyRole(roles, ["admin", "curator", "policy_owner"]);
+  const canDelete = hasAnyRole(roles, ["admin"]);
+  const qc = useQueryClient();
+  const delFn = useServerFn(deleteSources);
 
   const { data: sources, isLoading } = useQuery({
     queryKey: ["sources"],
@@ -56,6 +67,39 @@ function Page() {
       s.title.toLowerCase().includes(q) ||
       (s.owner?.toLowerCase().includes(q) ?? false)
     );
+  });
+
+  const toggle = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleAll = () => {
+    setSelectedIds((prev) => {
+      if (prev.size === filtered.length) return new Set();
+      return new Set(filtered.map((s) => s.id));
+    });
+  };
+
+  const delMut = useMutation({
+    mutationFn: (ids: string[]) => delFn({ data: { ids } }),
+    onSuccess: (r) => {
+      const res = r as { deleted: string[]; blocked: { source_id: string; active_count: number }[] };
+      if (res.deleted.length) toast.success(`Deleted ${res.deleted.length} source(s)`);
+      if (res.blocked.length) {
+        toast.warning(
+          `${res.blocked.length} source(s) not deleted — active atoms derive from them; withdraw those in Memory first.`,
+          { description: res.blocked.map((b) => `${b.source_id} (${b.active_count} active)`).join(" · ") },
+        );
+      }
+      setSelectedIds(new Set());
+      setConfirmIds(null);
+      qc.invalidateQueries({ queryKey: ["sources"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   return (
@@ -97,6 +141,15 @@ function Page() {
           <Table>
             <TableHeader>
               <TableRow>
+                {canDelete && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                      onCheckedChange={toggleAll}
+                      aria-label="Select all"
+                    />
+                  </TableHead>
+                )}
                 <TableHead className="w-[220px]">Source ID</TableHead>
                 <TableHead>Title</TableHead>
                 <TableHead>Type</TableHead>
@@ -104,6 +157,7 @@ function Page() {
                 <TableHead>Version</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Ingested</TableHead>
+                {canDelete && <TableHead className="w-10" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -113,6 +167,15 @@ function Page() {
                   className="cursor-pointer"
                   onClick={() => setSelected(s.id)}
                 >
+                  {canDelete && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.has(s.id)}
+                        onCheckedChange={() => toggle(s.id)}
+                        aria-label={`Select ${s.source_id}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-mono text-xs">{s.source_id}</TableCell>
                   <TableCell className="max-w-[280px] truncate text-sm">{s.title}</TableCell>
                   <TableCell className="text-xs">{SOURCE_TYPE_LABEL[s.source_type]}</TableCell>
@@ -127,6 +190,17 @@ function Page() {
                   <TableCell className="text-xs text-muted-foreground">
                     {new Date(s.ingestion_timestamp).toLocaleDateString()}
                   </TableCell>
+                  {canDelete && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => setConfirmIds([s.id])}
+                        aria-label={`Delete ${s.source_id}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -147,6 +221,32 @@ function Page() {
           }
         />
       )}
+
+      {canDelete && (
+        <SelectionBar selectedCount={selectedIds.size} onClear={() => setSelectedIds(new Set())}>
+          <Button
+            size="sm" variant="destructive"
+            onClick={() => setConfirmIds(Array.from(selectedIds))}
+          >
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete selected
+          </Button>
+        </SelectionBar>
+      )}
+
+      <ConfirmDeleteDialog
+        open={!!confirmIds}
+        onOpenChange={(o) => !o && setConfirmIds(null)}
+        title={`Delete ${confirmIds?.length ?? 0} source${confirmIds?.length === 1 ? "" : "s"}?`}
+        description="This cannot be undone. Sources with active published atoms will be skipped."
+        bullets={[
+          "Removes the source file, all parsed windows/spans, and every pipeline run for this source.",
+          "Deletes any change sets derived from this source.",
+          "Sources with active atoms are blocked — withdraw those in Memory first.",
+        ]}
+        confirmLabel="Delete sources"
+        loading={delMut.isPending}
+        onConfirm={() => confirmIds && delMut.mutate(confirmIds)}
+      />
 
       <RegisterSourceDialog open={open} onOpenChange={setOpen} />
       <SourceDetailDrawer sourceId={selected} onClose={() => setSelected(null)} />
