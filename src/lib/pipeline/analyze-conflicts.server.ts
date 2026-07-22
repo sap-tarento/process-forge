@@ -27,6 +27,7 @@ export type Verdict =
   | "specializes_b_to_a"
   | "overlap_compatible"
   | "overlap_conflict"
+  | "inconclusive"
   | "unrelated";
 
 export interface ConflictFinding {
@@ -288,6 +289,17 @@ export async function analyzeConflictsForChangeSet(
     const atom = item.atom_payload as unknown as ProcessAtom;
     if (!atom?.identity) continue;
     const findings: ConflictFinding[] = [];
+    // Rows to insert into public.conflicts once per (item, neighbor) that
+    // becomes overlap_conflict OR inconclusive. Existing atoms are `atom_a`
+    // (a real uuid); the draft is referenced by its atom_id string in
+    // `atom_b_atom_id` because it may not yet have a row in `atoms`.
+    const conflictRows: {
+      atom_a: string;
+      atom_b_atom_id: string;
+      conflict_kind: ConflictKind;
+      status: Database["public"]["Enums"]["conflict_status"];
+      detail: unknown;
+    }[] = [];
 
     for (const nref of (item.neighbors as unknown as { atom_db_id: string }[]) ?? []) {
       const n = neighborsById.get(nref.atom_db_id);
@@ -309,8 +321,14 @@ export async function analyzeConflictsForChangeSet(
         const llm = await comparatorLLM(atom, n);
         out.comparator_calls++;
         if (!llm) {
-          verdict = "overlap_compatible";
-          reason = "Comparator unavailable; defaulted to non-conflicting overlap. Reviewer attention advised.";
+          // Ambiguity principle: unknown ≠ compatible. When deterministic
+          // analysis was inconclusive AND the LLM comparator is unavailable
+          // (network error, disabled, invalid response), we do NOT silently
+          // assume compatibility. We surface it as an explicit "inconclusive"
+          // verdict so downstream stages route it to human review.
+          verdict = "inconclusive";
+          conflict_kind = "overlap";
+          reason = "Deterministic analysis inconclusive and comparator unavailable — requires human judgment.";
         } else {
           verdict = llm.verdict;
           conflict_kind = llm.conflict_kind;
@@ -336,12 +354,39 @@ export async function analyzeConflictsForChangeSet(
       else if (verdict === "specializes_a_to_b" || verdict === "specializes_b_to_a") out.specializations++;
       else if (verdict === "overlap_compatible") out.overlaps++;
       else if (verdict === "overlap_conflict") out.conflicts++;
+      // "inconclusive" is counted under conflicts for review workload: it
+      // requires the same "human must look at the pair" attention.
+      else if (verdict === "inconclusive") out.conflicts++;
+
+      if (verdict === "overlap_conflict" || verdict === "inconclusive") {
+        conflictRows.push({
+          atom_a: n.db_id,
+          atom_b_atom_id: atom.identity.atom_id,
+          conflict_kind: verdict === "inconclusive" ? "overlap" : (conflict_kind ?? "incompatible_action"),
+          status: "open",
+          detail: {
+            change_set_item_id: item.id,
+            draft_atom_id: atom.identity.atom_id,
+            neighbor_atom_id: n.atom_id,
+            neighbor_version: n.version,
+            verdict,
+            source,
+            reason,
+            dimensions: dims,
+            action_compare: act,
+          },
+        });
+      }
     }
 
     await admin
       .from("change_set_items")
       .update({ conflict_findings: findings as never })
       .eq("id", item.id);
+
+    if (conflictRows.length) {
+      await admin.from("conflicts").insert(conflictRows as never);
+    }
   }
 
   return out;
