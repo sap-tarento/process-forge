@@ -85,6 +85,15 @@ function About() {
             </p>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">The 14-stage compilation pipeline</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PipelineDiagram />
+          </CardContent>
+        </Card>
       </div>
     </AppShell>
   );
