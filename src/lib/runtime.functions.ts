@@ -1,6 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { RetrievalResult } from "./pipeline/retrieve-atoms.server";
+
+export type { RetrievalResult, RetrievedAtom, StepRecord, RetrievalContext } from "./pipeline/retrieve-atoms.server";
 
 const RetrievalInput = z.object({
   process: z.string().nullable().optional(),
@@ -19,8 +22,14 @@ export const retrieveAtomsFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { retrieveAtoms } = await import("./pipeline/retrieve-atoms.server");
-    return await retrieveAtoms(supabaseAdmin, data);
+    const result = await retrieveAtoms(supabaseAdmin, data as never);
+    // Round-trip through JSON to guarantee wire-serializable payload; the
+    // ProcessAtom sub-tree contains Record<string, unknown> which the RPC
+    // type check refuses without this narrowing.
+    return JSON.parse(JSON.stringify(result)) as unknown as { __t: "RetrievalResult" };
   });
+
+export function asRetrievalResult(v: unknown): RetrievalResult { return v as RetrievalResult; }
 
 const DemoSeedInput = z.object({ confirm: z.literal(true) });
 
