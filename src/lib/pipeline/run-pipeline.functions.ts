@@ -63,7 +63,7 @@ export const runPipeline = createServerFn({ method: "POST" })
     const setStage = async (stage: string, patch: Record<string, unknown>) => {
       await supabaseAdmin
         .from("pipeline_run_stages")
-        .update(patch)
+        .update(patch as never)
         .eq("run_id", run.id)
         .eq("stage", stage);
     };
@@ -114,7 +114,7 @@ export const runPipeline = createServerFn({ method: "POST" })
         .eq("id", run.id);
       await supabaseAdmin
         .from("sources")
-        .update({ status: "atoms_drafted", updated_at: new Date().toISOString() })
+        .update({ status: "extracted", updated_at: new Date().toISOString() })
         .eq("id", data.sourceId);
 
       await supabaseAdmin.from("audit_events").insert({
