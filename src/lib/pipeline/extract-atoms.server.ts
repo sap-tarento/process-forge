@@ -79,7 +79,7 @@ export async function extractAtomsForSource(
         source_title: src.title,
         source_type: src.source_type as ProcessAtom["provenance"]["source_type"],
         source_version: src.version ?? "1",
-        source_text_hash: src.text_hash ?? "unknown",
+        source_text_hash: src.file_sha256 ?? "unknown",
         parser_version: PARSER_VERSION,
         extractor_version: EXTRACTOR_VERSION,
         extraction_model: `${settings.provider}/${settings.model}`,
@@ -97,7 +97,7 @@ export async function extractAtomsForSource(
         operation: "add",
         atom_payload: outcome.atom as never,
         validation_results: outcome.atom.quality.validations as never,
-        review_status: outcome.passed ? "pending" : "needs_changes",
+        review_status: "pending",
         curator_notes: outcome.passed ? null : `Blocked by validation: ${outcome.issues.join("; ")}`,
       });
       if (!error) produced++;
