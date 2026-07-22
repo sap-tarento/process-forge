@@ -78,7 +78,7 @@ export function AppSidebar() {
             <div className="flex flex-col leading-tight">
               <span className="text-sm font-semibold tracking-tight">AtomForge</span>
               <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/60">
-                Process Atom Compiler
+                INFORMATION ATOM COMPILER
               </span>
             </div>
           )}
