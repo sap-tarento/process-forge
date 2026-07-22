@@ -3,16 +3,20 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Workflow, CheckCircle2, XCircle, Circle, Loader2, MinusCircle, ChevronRight, Play, Ban } from "lucide-react";
+import { Workflow, CheckCircle2, XCircle, Circle, Loader2, MinusCircle, ChevronRight, Play, Ban, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { PIPELINE_STAGES, STAGE_LABELS, STAGE_SHORT_LABELS, type PipelineStage } from "@/types/atom";
 import { cn } from "@/lib/utils";
 import { advancePipelineRun, markPipelineRunFailed } from "@/lib/pipeline/run-pipeline.functions";
+import { deletePipelineRuns } from "@/lib/management.functions";
 import { useMyRoles, hasAnyRole } from "@/hooks/useAuth";
+import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
+import { SelectionBar } from "@/components/common/SelectionBar";
 
 export const Route = createFileRoute("/_authenticated/pipeline")({
   head: () => ({
@@ -49,6 +53,12 @@ interface StageRow {
 
 function Page() {
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmIds, setConfirmIds] = useState<string[] | null>(null);
+  const { data: roles } = useMyRoles();
+  const canManage = hasAnyRole(roles, ["admin", "curator", "policy_owner"]);
+  const qc = useQueryClient();
+  const delFn = useServerFn(deletePipelineRuns);
 
   const runsQ = useQuery({
     queryKey: ["pipeline-runs"],
@@ -81,6 +91,22 @@ function Page() {
     refetchInterval: 3000,
   });
 
+  const toggle = (id: string) => setSelectedIds((prev) => {
+    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;
+  });
+
+  const delMut = useMutation({
+    mutationFn: (ids: string[]) => delFn({ data: { ids } }),
+    onSuccess: (r) => {
+      const res = r as { deleted: string[] };
+      toast.success(`Deleted ${res.deleted.length} run(s)`);
+      if (activeRunId && res.deleted.includes(activeRunId)) setSelectedRun(null);
+      setSelectedIds(new Set()); setConfirmIds(null);
+      qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   return (
     <AppShell title="Pipeline" description="14-stage compilation from raw source to governed atom change set.">
       {runs.length === 0 ? (
@@ -99,25 +125,33 @@ function Page() {
             <ul className="max-h-[600px] overflow-y-auto">
               {runs.map((r) => (
                 <li key={r.id}>
-                  <button
-                    onClick={() => setSelectedRun(r.id)}
+                  <div
                     className={cn(
-                      "flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left hover:bg-muted/40",
+                      "flex w-full items-center gap-2 border-b border-border px-3 py-2 hover:bg-muted/40",
                       activeRunId === r.id && "bg-muted/50",
                     )}
                   >
-                    <RunStatusIcon status={r.status} />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs font-medium">{r.source?.title ?? "Untitled"}</div>
-                      <div className="truncate font-mono text-[10px] text-muted-foreground">
-                        {r.source?.source_id ?? r.source_id.slice(0, 8)}
+                    {canManage && (
+                      <Checkbox
+                        checked={selectedIds.has(r.id)}
+                        onCheckedChange={() => toggle(r.id)}
+                        aria-label="Select run"
+                      />
+                    )}
+                    <button onClick={() => setSelectedRun(r.id)} className="flex flex-1 items-center gap-2 text-left min-w-0">
+                      <RunStatusIcon status={r.status} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-medium">{r.source?.title ?? "Untitled"}</div>
+                        <div className="truncate font-mono text-[10px] text-muted-foreground">
+                          {r.source?.source_id ?? r.source_id.slice(0, 8)}
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {new Date(r.started_at).toLocaleDateString()}
-                    </div>
-                    <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                  </button>
+                      <div className="text-[10px] text-muted-foreground">
+                        {new Date(r.started_at).toLocaleDateString()}
+                      </div>
+                      <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -129,6 +163,7 @@ function Page() {
               <StageTracker
                 run={runs.find((r) => r.id === activeRunId)!}
                 stages={stagesQ.data}
+                onDeleted={() => setSelectedRun(null)}
               />
             ) : (
               <div className="p-6 text-center text-sm text-muted-foreground">
@@ -138,16 +173,48 @@ function Page() {
           </div>
         </div>
       )}
+
+      {canManage && (
+        <SelectionBar selectedCount={selectedIds.size} onClear={() => setSelectedIds(new Set())}>
+          <Button size="sm" variant="destructive" onClick={() => setConfirmIds(Array.from(selectedIds))}>
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete selected
+          </Button>
+        </SelectionBar>
+      )}
+
+      <ConfirmDeleteDialog
+        open={!!confirmIds}
+        onOpenChange={(o) => !o && setConfirmIds(null)}
+        title={`Delete ${confirmIds?.length ?? 0} run${confirmIds?.length === 1 ? "" : "s"}?`}
+        description="Removes the run(s) and their 14 stage records. Any change set produced is kept."
+        confirmLabel="Delete runs"
+        loading={delMut.isPending}
+        onConfirm={() => confirmIds && delMut.mutate(confirmIds)}
+      />
     </AppShell>
   );
 }
 
-function StageTracker({ run, stages }: { run: PipelineRun; stages: StageRow[] }) {
+function StageTracker({ run, stages, onDeleted }: { run: PipelineRun; stages: StageRow[]; onDeleted: () => void }) {
   const qc = useQueryClient();
   const { data: roles } = useMyRoles();
   const canRun = hasAnyRole(roles, ["admin", "curator", "policy_owner"]);
+  const canManage = canRun;
   const advanceFn = useServerFn(advancePipelineRun);
   const failFn = useServerFn(markPipelineRunFailed);
+  const delFn = useServerFn(deletePipelineRuns);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const delMut = useMutation({
+    mutationFn: () => delFn({ data: { ids: [run.id] } }),
+    onSuccess: () => {
+      toast.success("Run deleted");
+      setConfirmOpen(false);
+      qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+      onDeleted();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const resumeMut = useMutation({
     mutationFn: async () => {
@@ -217,6 +284,11 @@ function StageTracker({ run, stages }: { run: PipelineRun; stages: StageRow[] })
               </Button>
             </>
           )}
+          {canManage && (
+            <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => setConfirmOpen(true)}>
+              <Trash2 className="mr-1.5 h-3 w-3" /> Delete run
+            </Button>
+          )}
         </div>
       </div>
 
@@ -265,6 +337,15 @@ function StageTracker({ run, stages }: { run: PipelineRun; stages: StageRow[] })
           </li>
         ))}
       </ol>
+      <ConfirmDeleteDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Delete this run?"
+        description="Removes the run and its 14 stage records. The change set it produced is kept."
+        confirmLabel="Delete run"
+        loading={delMut.isPending}
+        onConfirm={() => delMut.mutate()}
+      />
     </div>
   );
 }
