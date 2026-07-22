@@ -3,7 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { Play } from "lucide-react";
 
-export const Route = createFileRoute("/runtime")({
+export const Route = createFileRoute("/_authenticated/runtime")({
   head: () => ({
     meta: [
       { title: "Runtime — AtomForge" },

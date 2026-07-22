@@ -3,7 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { AlertTriangle } from "lucide-react";
 
-export const Route = createFileRoute("/conflicts")({
+export const Route = createFileRoute("/_authenticated/conflicts")({
   head: () => ({
     meta: [
       { title: "Conflicts — AtomForge" },

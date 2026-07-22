@@ -3,7 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { Database } from "lucide-react";
 
-export const Route = createFileRoute("/memory")({
+export const Route = createFileRoute("/_authenticated/memory")({
   head: () => ({
     meta: [
       { title: "Memory — AtomForge" },
