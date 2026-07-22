@@ -9,109 +9,108 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SourcesRouteImport } from './routes/sources'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as RuntimeRouteImport } from './routes/runtime'
-import { Route as ReviewRouteImport } from './routes/review'
-import { Route as PipelineRouteImport } from './routes/pipeline'
-import { Route as MemoryRouteImport } from './routes/memory'
-import { Route as GovernanceRouteImport } from './routes/governance'
-import { Route as ConflictsRouteImport } from './routes/conflicts'
 import { Route as AboutRouteImport } from './routes/about'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedSourcesRouteImport } from './routes/_authenticated/sources'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedRuntimeRouteImport } from './routes/_authenticated/runtime'
+import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
+import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated/pipeline'
+import { Route as AuthenticatedMemoryRouteImport } from './routes/_authenticated/memory'
+import { Route as AuthenticatedGovernanceRouteImport } from './routes/_authenticated/governance'
+import { Route as AuthenticatedConflictsRouteImport } from './routes/_authenticated/conflicts'
 
-const SourcesRoute = SourcesRouteImport.update({
-  id: '/sources',
-  path: '/sources',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RuntimeRoute = RuntimeRouteImport.update({
-  id: '/runtime',
-  path: '/runtime',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReviewRoute = ReviewRouteImport.update({
-  id: '/review',
-  path: '/review',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PipelineRoute = PipelineRouteImport.update({
-  id: '/pipeline',
-  path: '/pipeline',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MemoryRoute = MemoryRouteImport.update({
-  id: '/memory',
-  path: '/memory',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const GovernanceRoute = GovernanceRouteImport.update({
-  id: '/governance',
-  path: '/governance',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ConflictsRoute = ConflictsRouteImport.update({
-  id: '/conflicts',
-  path: '/conflicts',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AboutRoute = AboutRouteImport.update({
   id: '/about',
   path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
+const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
+  id: '/_authenticated/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedSourcesRoute = AuthenticatedSourcesRouteImport.update({
+  id: '/_authenticated/sources',
+  path: '/sources',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/_authenticated/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRuntimeRoute = AuthenticatedRuntimeRouteImport.update({
+  id: '/_authenticated/runtime',
+  path: '/runtime',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
+  id: '/_authenticated/review',
+  path: '/review',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedPipelineRoute = AuthenticatedPipelineRouteImport.update({
+  id: '/_authenticated/pipeline',
+  path: '/pipeline',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedMemoryRoute = AuthenticatedMemoryRouteImport.update({
+  id: '/_authenticated/memory',
+  path: '/memory',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedGovernanceRoute = AuthenticatedGovernanceRouteImport.update({
+  id: '/_authenticated/governance',
+  path: '/governance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedConflictsRoute = AuthenticatedConflictsRouteImport.update({
+  id: '/_authenticated/conflicts',
+  path: '/conflicts',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
   '/about': typeof AboutRoute
-  '/conflicts': typeof ConflictsRoute
-  '/governance': typeof GovernanceRoute
-  '/memory': typeof MemoryRoute
-  '/pipeline': typeof PipelineRoute
-  '/review': typeof ReviewRoute
-  '/runtime': typeof RuntimeRoute
-  '/settings': typeof SettingsRoute
-  '/sources': typeof SourcesRoute
+  '/conflicts': typeof AuthenticatedConflictsRoute
+  '/governance': typeof AuthenticatedGovernanceRoute
+  '/memory': typeof AuthenticatedMemoryRoute
+  '/pipeline': typeof AuthenticatedPipelineRoute
+  '/review': typeof AuthenticatedReviewRoute
+  '/runtime': typeof AuthenticatedRuntimeRoute
+  '/settings': typeof AuthenticatedSettingsRoute
+  '/sources': typeof AuthenticatedSourcesRoute
+  '/': typeof AuthenticatedIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
   '/about': typeof AboutRoute
-  '/conflicts': typeof ConflictsRoute
-  '/governance': typeof GovernanceRoute
-  '/memory': typeof MemoryRoute
-  '/pipeline': typeof PipelineRoute
-  '/review': typeof ReviewRoute
-  '/runtime': typeof RuntimeRoute
-  '/settings': typeof SettingsRoute
-  '/sources': typeof SourcesRoute
+  '/conflicts': typeof AuthenticatedConflictsRoute
+  '/governance': typeof AuthenticatedGovernanceRoute
+  '/memory': typeof AuthenticatedMemoryRoute
+  '/pipeline': typeof AuthenticatedPipelineRoute
+  '/review': typeof AuthenticatedReviewRoute
+  '/runtime': typeof AuthenticatedRuntimeRoute
+  '/settings': typeof AuthenticatedSettingsRoute
+  '/sources': typeof AuthenticatedSourcesRoute
+  '/': typeof AuthenticatedIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
   '/about': typeof AboutRoute
-  '/conflicts': typeof ConflictsRoute
-  '/governance': typeof GovernanceRoute
-  '/memory': typeof MemoryRoute
-  '/pipeline': typeof PipelineRoute
-  '/review': typeof ReviewRoute
-  '/runtime': typeof RuntimeRoute
-  '/settings': typeof SettingsRoute
-  '/sources': typeof SourcesRoute
+  '/_authenticated/conflicts': typeof AuthenticatedConflictsRoute
+  '/_authenticated/governance': typeof AuthenticatedGovernanceRoute
+  '/_authenticated/memory': typeof AuthenticatedMemoryRoute
+  '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
+  '/_authenticated/review': typeof AuthenticatedReviewRoute
+  '/_authenticated/runtime': typeof AuthenticatedRuntimeRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/sources': typeof AuthenticatedSourcesRoute
+  '/_authenticated/': typeof AuthenticatedIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
     | '/about'
     | '/conflicts'
     | '/governance'
@@ -121,9 +120,9 @@ export interface FileRouteTypes {
     | '/runtime'
     | '/settings'
     | '/sources'
+    | '/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/about'
     | '/conflicts'
     | '/governance'
@@ -133,91 +132,36 @@ export interface FileRouteTypes {
     | '/runtime'
     | '/settings'
     | '/sources'
+    | '/'
   id:
     | '__root__'
-    | '/'
     | '/about'
-    | '/conflicts'
-    | '/governance'
-    | '/memory'
-    | '/pipeline'
-    | '/review'
-    | '/runtime'
-    | '/settings'
-    | '/sources'
+    | '/_authenticated/conflicts'
+    | '/_authenticated/governance'
+    | '/_authenticated/memory'
+    | '/_authenticated/pipeline'
+    | '/_authenticated/review'
+    | '/_authenticated/runtime'
+    | '/_authenticated/settings'
+    | '/_authenticated/sources'
+    | '/_authenticated/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
-  ConflictsRoute: typeof ConflictsRoute
-  GovernanceRoute: typeof GovernanceRoute
-  MemoryRoute: typeof MemoryRoute
-  PipelineRoute: typeof PipelineRoute
-  ReviewRoute: typeof ReviewRoute
-  RuntimeRoute: typeof RuntimeRoute
-  SettingsRoute: typeof SettingsRoute
-  SourcesRoute: typeof SourcesRoute
+  AuthenticatedConflictsRoute: typeof AuthenticatedConflictsRoute
+  AuthenticatedGovernanceRoute: typeof AuthenticatedGovernanceRoute
+  AuthenticatedMemoryRoute: typeof AuthenticatedMemoryRoute
+  AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
+  AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
+  AuthenticatedRuntimeRoute: typeof AuthenticatedRuntimeRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedSourcesRoute: typeof AuthenticatedSourcesRoute
+  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/sources': {
-      id: '/sources'
-      path: '/sources'
-      fullPath: '/sources'
-      preLoaderRoute: typeof SourcesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/runtime': {
-      id: '/runtime'
-      path: '/runtime'
-      fullPath: '/runtime'
-      preLoaderRoute: typeof RuntimeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/review': {
-      id: '/review'
-      path: '/review'
-      fullPath: '/review'
-      preLoaderRoute: typeof ReviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pipeline': {
-      id: '/pipeline'
-      path: '/pipeline'
-      fullPath: '/pipeline'
-      preLoaderRoute: typeof PipelineRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/memory': {
-      id: '/memory'
-      path: '/memory'
-      fullPath: '/memory'
-      preLoaderRoute: typeof MemoryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/governance': {
-      id: '/governance'
-      path: '/governance'
-      fullPath: '/governance'
-      preLoaderRoute: typeof GovernanceRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/conflicts': {
-      id: '/conflicts'
-      path: '/conflicts'
-      fullPath: '/conflicts'
-      preLoaderRoute: typeof ConflictsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/about': {
       id: '/about'
       path: '/about'
@@ -225,27 +169,83 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
+    '/_authenticated/': {
+      id: '/_authenticated/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/sources': {
+      id: '/_authenticated/sources'
+      path: '/sources'
+      fullPath: '/sources'
+      preLoaderRoute: typeof AuthenticatedSourcesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/runtime': {
+      id: '/_authenticated/runtime'
+      path: '/runtime'
+      fullPath: '/runtime'
+      preLoaderRoute: typeof AuthenticatedRuntimeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/review': {
+      id: '/_authenticated/review'
+      path: '/review'
+      fullPath: '/review'
+      preLoaderRoute: typeof AuthenticatedReviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/pipeline': {
+      id: '/_authenticated/pipeline'
+      path: '/pipeline'
+      fullPath: '/pipeline'
+      preLoaderRoute: typeof AuthenticatedPipelineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/memory': {
+      id: '/_authenticated/memory'
+      path: '/memory'
+      fullPath: '/memory'
+      preLoaderRoute: typeof AuthenticatedMemoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/governance': {
+      id: '/_authenticated/governance'
+      path: '/governance'
+      fullPath: '/governance'
+      preLoaderRoute: typeof AuthenticatedGovernanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/conflicts': {
+      id: '/_authenticated/conflicts'
+      path: '/conflicts'
+      fullPath: '/conflicts'
+      preLoaderRoute: typeof AuthenticatedConflictsRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
-  ConflictsRoute: ConflictsRoute,
-  GovernanceRoute: GovernanceRoute,
-  MemoryRoute: MemoryRoute,
-  PipelineRoute: PipelineRoute,
-  ReviewRoute: ReviewRoute,
-  RuntimeRoute: RuntimeRoute,
-  SettingsRoute: SettingsRoute,
-  SourcesRoute: SourcesRoute,
+  AuthenticatedConflictsRoute: AuthenticatedConflictsRoute,
+  AuthenticatedGovernanceRoute: AuthenticatedGovernanceRoute,
+  AuthenticatedMemoryRoute: AuthenticatedMemoryRoute,
+  AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,
+  AuthenticatedReviewRoute: AuthenticatedReviewRoute,
+  AuthenticatedRuntimeRoute: AuthenticatedRuntimeRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedSourcesRoute: AuthenticatedSourcesRoute,
+  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

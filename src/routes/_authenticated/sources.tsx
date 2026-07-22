@@ -3,7 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { FileText } from "lucide-react";
 
-export const Route = createFileRoute("/sources")({
+export const Route = createFileRoute("/_authenticated/sources")({
   head: () => ({
     meta: [
       { title: "Sources — AtomForge" },
