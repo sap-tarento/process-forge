@@ -1,4 +1,5 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   FileText,
@@ -11,6 +12,7 @@ import {
   Settings,
   Info,
   Atom,
+  LogOut,
 } from "lucide-react";
 import {
   Sidebar,
@@ -25,6 +27,10 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { supabase } from "@/integrations/supabase/client";
+import { useMyRoles, primaryRole, ROLE_LABEL, useSession } from "@/hooks/useAuth";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 const workspace = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -46,8 +52,20 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
-  const isActive = (url: string) =>
-    url === "/" ? pathname === "/" : pathname.startsWith(url);
+  const isActive = (url: string) => (url === "/" ? pathname === "/" : pathname.startsWith(url));
+
+  const { user } = useSession();
+  const { data: roles } = useMyRoles();
+  const role = primaryRole(roles);
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  const signOut = async () => {
+    await qc.cancelQueries();
+    qc.clear();
+    await supabase.auth.signOut();
+    navigate({ to: "/auth", replace: true });
+  };
 
   return (
     <Sidebar collapsible="icon">
@@ -106,9 +124,42 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
-        {!collapsed && (
-          <div className="px-2 py-1.5 text-[10px] leading-relaxed text-sidebar-foreground/60">
-            v0.1.0 · Open source
+        {!collapsed ? (
+          <div className="space-y-2 px-2 py-1.5">
+            {user && (
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-medium text-sidebar-foreground">
+                    {user.email}
+                  </div>
+                  <div className="mt-0.5">
+                    {role ? (
+                      <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-medium uppercase tracking-wider">
+                        {ROLE_LABEL[role]}
+                      </Badge>
+                    ) : (
+                      <span className="text-[10px] text-sidebar-foreground/60">No role</span>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0"
+                  onClick={signOut}
+                  title="Sign out"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+            <div className="text-[10px] text-sidebar-foreground/60">v0.1.0 · Open source</div>
+          </div>
+        ) : (
+          <div className="flex justify-center py-1.5">
+            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={signOut} title="Sign out">
+              <LogOut className="h-3.5 w-3.5" />
+            </Button>
           </div>
         )}
       </SidebarFooter>
