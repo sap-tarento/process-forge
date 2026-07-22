@@ -12,6 +12,6 @@ export async function recordAudit(opts: {
     entity_type: opts.entity_type,
     entity_id: opts.entity_id ?? null,
     actor: userRes.user?.id ?? null,
-    payload: opts.payload ?? {},
+    payload: (opts.payload ?? {}) as never,
   });
 }
