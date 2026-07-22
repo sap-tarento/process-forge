@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PIPELINE_STAGES, STAGE_LABELS } from "@/types/atom";
 
 export const Route = createFileRoute("/about")({
   head: () => ({
@@ -84,7 +85,46 @@ function About() {
             </p>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">The 14-stage compilation pipeline</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PipelineDiagram />
+          </CardContent>
+        </Card>
       </div>
     </AppShell>
+  );
+}
+
+function PipelineDiagram() {
+  const groups: Array<{ label: string; stages: number[] }> = [
+    { label: "Ingest", stages: [0, 1, 2] },
+    { label: "Extract", stages: [3, 4, 5] },
+    { label: "Enrich & validate", stages: [6, 7, 8] },
+    { label: "Curate", stages: [9, 10, 11] },
+    { label: "Govern & publish", stages: [12, 13] },
+  ];
+  return (
+    <div className="space-y-4">
+      {groups.map((g) => (
+        <div key={g.label}>
+          <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">{g.label}</div>
+          <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+            {g.stages.map((i) => (
+              <div key={i} className="rounded-md border border-border bg-background/60 p-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-mono text-primary">{i + 1}</span>
+                  <span className="text-xs font-medium">{STAGE_LABELS[PIPELINE_STAGES[i]]}</span>
+                </div>
+                <div className="mt-1 pl-7 font-mono text-[10px] text-muted-foreground">{PIPELINE_STAGES[i]}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

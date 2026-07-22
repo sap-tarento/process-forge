@@ -21,6 +21,7 @@ import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedMemoryRouteImport } from './routes/_authenticated/memory'
 import { Route as AuthenticatedGovernanceRouteImport } from './routes/_authenticated/governance'
 import { Route as AuthenticatedConflictsRouteImport } from './routes/_authenticated/conflicts'
+import { Route as ApiPublicRetrieveRouteImport } from './routes/api/public/retrieve'
 import { Route as AuthenticatedAtomsIdRouteImport } from './routes/_authenticated/atoms.$id'
 
 const AuthRoute = AuthRouteImport.update({
@@ -82,6 +83,11 @@ const AuthenticatedConflictsRoute = AuthenticatedConflictsRouteImport.update({
   path: '/conflicts',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiPublicRetrieveRoute = ApiPublicRetrieveRouteImport.update({
+  id: '/api/public/retrieve',
+  path: '/api/public/retrieve',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedAtomsIdRoute = AuthenticatedAtomsIdRouteImport.update({
   id: '/atoms/$id',
   path: '/atoms/$id',
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRoute
   '/sources': typeof AuthenticatedSourcesRoute
   '/atoms/$id': typeof AuthenticatedAtomsIdRoute
+  '/api/public/retrieve': typeof ApiPublicRetrieveRoute
 }
 export interface FileRoutesByTo {
   '/about': typeof AboutRoute
@@ -115,6 +122,7 @@ export interface FileRoutesByTo {
   '/sources': typeof AuthenticatedSourcesRoute
   '/': typeof AuthenticatedIndexRoute
   '/atoms/$id': typeof AuthenticatedAtomsIdRoute
+  '/api/public/retrieve': typeof ApiPublicRetrieveRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -131,6 +139,7 @@ export interface FileRoutesById {
   '/_authenticated/sources': typeof AuthenticatedSourcesRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/atoms/$id': typeof AuthenticatedAtomsIdRoute
+  '/api/public/retrieve': typeof ApiPublicRetrieveRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -147,6 +156,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sources'
     | '/atoms/$id'
+    | '/api/public/retrieve'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/about'
@@ -161,6 +171,7 @@ export interface FileRouteTypes {
     | '/sources'
     | '/'
     | '/atoms/$id'
+    | '/api/public/retrieve'
   id:
     | '__root__'
     | '/_authenticated'
@@ -176,12 +187,14 @@ export interface FileRouteTypes {
     | '/_authenticated/sources'
     | '/_authenticated/'
     | '/_authenticated/atoms/$id'
+    | '/api/public/retrieve'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AboutRoute: typeof AboutRoute
   AuthRoute: typeof AuthRoute
+  ApiPublicRetrieveRoute: typeof ApiPublicRetrieveRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -270,6 +283,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedConflictsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/public/retrieve': {
+      id: '/api/public/retrieve'
+      path: '/api/public/retrieve'
+      fullPath: '/api/public/retrieve'
+      preLoaderRoute: typeof ApiPublicRetrieveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/atoms/$id': {
       id: '/_authenticated/atoms/$id'
       path: '/atoms/$id'
@@ -313,6 +333,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AboutRoute: AboutRoute,
   AuthRoute: AuthRoute,
+  ApiPublicRetrieveRoute: ApiPublicRetrieveRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
