@@ -30,11 +30,18 @@ export interface PublicationBlocker {
 function findBlockingFields(atom: ProcessAtom): string[] {
   const blockers: string[] = [];
 
-  // Action derivation must not be unknown (groundedness hard gate)
-  const actionFields = ["modality", "actor", "operation", "object", "target"] as const;
-  const der = (atom.action?.derivation ?? {}) as Record<string, string>;
-  for (const f of actionFields) if (der[f] === "unknown") blockers.push(`action.${f}`);
-
+  // Groundedness hard gate — the quality validation layer already flagged any
+  // unsupported action or scope field. If the "groundedness" validation is
+  // present and did not pass, publication is refused.
+  const groundedness = (atom.quality?.validations ?? []).find((v) => v.layer === "groundedness");
+  if (groundedness && !groundedness.passed) {
+    blockers.push(...(groundedness.messages?.length ? groundedness.messages.map((m) => `groundedness: ${m}`) : ["groundedness: unsupported field(s)"]));
+  }
+  // Purpose derivation must not be unknown when set as authoritative for anything else
+  if (atom.purpose?.derivation === "unknown" && atom.purpose?.text) {
+    // Purpose is not execution-authoritative — do NOT block on this. Kept here as a comment
+    // to make the intent explicit.
+  }
   // Scope dimensions with requires_review=true block
   const app = atom.applicability ?? ({} as ProcessAtom["applicability"]);
   const dims: [string, { requires_review?: boolean; status?: string } | undefined][] = [
