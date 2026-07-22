@@ -71,6 +71,7 @@ export type Database = {
           purpose: Json
           quality: Json
           roles: string[]
+          source_id: string | null
           status: Database["public"]["Enums"]["atom_status"]
           transaction_time: string
           updated_at: string
@@ -96,6 +97,7 @@ export type Database = {
           purpose?: Json
           quality?: Json
           roles?: string[]
+          source_id?: string | null
           status?: Database["public"]["Enums"]["atom_status"]
           transaction_time?: string
           updated_at?: string
@@ -121,6 +123,7 @@ export type Database = {
           purpose?: Json
           quality?: Json
           roles?: string[]
+          source_id?: string | null
           status?: Database["public"]["Enums"]["atom_status"]
           transaction_time?: string
           updated_at?: string
@@ -128,7 +131,15 @@ export type Database = {
           valid_to?: string | null
           version?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "atoms_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "sources"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       audit_events: {
         Row: {
@@ -167,6 +178,7 @@ export type Database = {
           detection_confidence: number | null
           id: string
           linguistic_form: Database["public"]["Enums"]["linguistic_form"]
+          source_id: string | null
           span_text: string
           status: Database["public"]["Enums"]["candidate_status"]
         }
@@ -176,6 +188,7 @@ export type Database = {
           detection_confidence?: number | null
           id?: string
           linguistic_form: Database["public"]["Enums"]["linguistic_form"]
+          source_id?: string | null
           span_text: string
           status?: Database["public"]["Enums"]["candidate_status"]
         }
@@ -185,6 +198,7 @@ export type Database = {
           detection_confidence?: number | null
           id?: string
           linguistic_form?: Database["public"]["Enums"]["linguistic_form"]
+          source_id?: string | null
           span_text?: string
           status?: Database["public"]["Enums"]["candidate_status"]
         }
@@ -194,6 +208,13 @@ export type Database = {
             columns: ["context_window_id"]
             isOneToOne: false
             referencedRelation: "context_windows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_spans_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "sources"
             referencedColumns: ["id"]
           },
         ]
@@ -445,6 +466,98 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      pipeline_run_stages: {
+        Row: {
+          counts: Json
+          error: string | null
+          finished_at: string | null
+          id: string
+          run_id: string
+          stage: string
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          counts?: Json
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          run_id: string
+          stage: string
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          counts?: Json
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          run_id?: string
+          stage?: string
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_run_stages_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipeline_runs: {
+        Row: {
+          change_set_id: string | null
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          source_id: string
+          started_at: string
+          status: string
+          triggered_by: string | null
+        }
+        Insert: {
+          change_set_id?: string | null
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          source_id: string
+          started_at?: string
+          status?: string
+          triggered_by?: string | null
+        }
+        Update: {
+          change_set_id?: string | null
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          source_id?: string
+          started_at?: string
+          status?: string
+          triggered_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_runs_change_set_id_fkey"
+            columns: ["change_set_id"]
+            isOneToOne: false
+            referencedRelation: "change_sets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_runs_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "sources"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       precedence_strategies: {
         Row: {
