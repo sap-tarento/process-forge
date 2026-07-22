@@ -9,8 +9,62 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SourcesRouteImport } from './routes/sources'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RuntimeRouteImport } from './routes/runtime'
+import { Route as ReviewRouteImport } from './routes/review'
+import { Route as PipelineRouteImport } from './routes/pipeline'
+import { Route as MemoryRouteImport } from './routes/memory'
+import { Route as GovernanceRouteImport } from './routes/governance'
+import { Route as ConflictsRouteImport } from './routes/conflicts'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SourcesRoute = SourcesRouteImport.update({
+  id: '/sources',
+  path: '/sources',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RuntimeRoute = RuntimeRouteImport.update({
+  id: '/runtime',
+  path: '/runtime',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReviewRoute = ReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PipelineRoute = PipelineRouteImport.update({
+  id: '/pipeline',
+  path: '/pipeline',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MemoryRoute = MemoryRouteImport.update({
+  id: '/memory',
+  path: '/memory',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GovernanceRoute = GovernanceRouteImport.update({
+  id: '/governance',
+  path: '/governance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConflictsRoute = ConflictsRouteImport.update({
+  id: '/conflicts',
+  path: '/conflicts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +73,158 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/conflicts': typeof ConflictsRoute
+  '/governance': typeof GovernanceRoute
+  '/memory': typeof MemoryRoute
+  '/pipeline': typeof PipelineRoute
+  '/review': typeof ReviewRoute
+  '/runtime': typeof RuntimeRoute
+  '/settings': typeof SettingsRoute
+  '/sources': typeof SourcesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/conflicts': typeof ConflictsRoute
+  '/governance': typeof GovernanceRoute
+  '/memory': typeof MemoryRoute
+  '/pipeline': typeof PipelineRoute
+  '/review': typeof ReviewRoute
+  '/runtime': typeof RuntimeRoute
+  '/settings': typeof SettingsRoute
+  '/sources': typeof SourcesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/conflicts': typeof ConflictsRoute
+  '/governance': typeof GovernanceRoute
+  '/memory': typeof MemoryRoute
+  '/pipeline': typeof PipelineRoute
+  '/review': typeof ReviewRoute
+  '/runtime': typeof RuntimeRoute
+  '/settings': typeof SettingsRoute
+  '/sources': typeof SourcesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/conflicts'
+    | '/governance'
+    | '/memory'
+    | '/pipeline'
+    | '/review'
+    | '/runtime'
+    | '/settings'
+    | '/sources'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/about'
+    | '/conflicts'
+    | '/governance'
+    | '/memory'
+    | '/pipeline'
+    | '/review'
+    | '/runtime'
+    | '/settings'
+    | '/sources'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/conflicts'
+    | '/governance'
+    | '/memory'
+    | '/pipeline'
+    | '/review'
+    | '/runtime'
+    | '/settings'
+    | '/sources'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
+  ConflictsRoute: typeof ConflictsRoute
+  GovernanceRoute: typeof GovernanceRoute
+  MemoryRoute: typeof MemoryRoute
+  PipelineRoute: typeof PipelineRoute
+  ReviewRoute: typeof ReviewRoute
+  RuntimeRoute: typeof RuntimeRoute
+  SettingsRoute: typeof SettingsRoute
+  SourcesRoute: typeof SourcesRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/sources': {
+      id: '/sources'
+      path: '/sources'
+      fullPath: '/sources'
+      preLoaderRoute: typeof SourcesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/runtime': {
+      id: '/runtime'
+      path: '/runtime'
+      fullPath: '/runtime'
+      preLoaderRoute: typeof RuntimeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/review': {
+      id: '/review'
+      path: '/review'
+      fullPath: '/review'
+      preLoaderRoute: typeof ReviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pipeline': {
+      id: '/pipeline'
+      path: '/pipeline'
+      fullPath: '/pipeline'
+      preLoaderRoute: typeof PipelineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/memory': {
+      id: '/memory'
+      path: '/memory'
+      fullPath: '/memory'
+      preLoaderRoute: typeof MemoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/governance': {
+      id: '/governance'
+      path: '/governance'
+      fullPath: '/governance'
+      preLoaderRoute: typeof GovernanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/conflicts': {
+      id: '/conflicts'
+      path: '/conflicts'
+      fullPath: '/conflicts'
+      preLoaderRoute: typeof ConflictsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,17 +237,16 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
+  ConflictsRoute: ConflictsRoute,
+  GovernanceRoute: GovernanceRoute,
+  MemoryRoute: MemoryRoute,
+  PipelineRoute: PipelineRoute,
+  ReviewRoute: ReviewRoute,
+  RuntimeRoute: RuntimeRoute,
+  SettingsRoute: SettingsRoute,
+  SourcesRoute: SourcesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
