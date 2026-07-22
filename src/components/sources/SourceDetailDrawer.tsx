@@ -11,7 +11,10 @@ import { STATUS_LABEL, SOURCE_TYPE_LABEL } from "@/lib/source-types";
 import { useMyRoles, hasAnyRole } from "@/hooks/useAuth";
 import { parseSource } from "@/lib/pipeline/parse-source.functions";
 import { startPipelineRun, advancePipelineRun } from "@/lib/pipeline/run-pipeline.functions";
-import { FileSearch, Play, Loader2 } from "lucide-react";
+import { deleteSources } from "@/lib/management.functions";
+import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
+import { useState } from "react";
+import { FileSearch, Play, Loader2, Trash2 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
 type Source = Database["public"]["Tables"]["sources"]["Row"];
@@ -25,9 +28,12 @@ export function SourceDetailDrawer({ sourceId, onClose }: Props) {
   const qc = useQueryClient();
   const { data: roles } = useMyRoles();
   const canRun = hasAnyRole(roles, ["admin", "curator", "policy_owner"]);
+  const canDelete = hasAnyRole(roles, ["admin"]);
   const parseFn = useServerFn(parseSource);
   const startFn = useServerFn(startPipelineRun);
   const advanceFn = useServerFn(advancePipelineRun);
+  const delFn = useServerFn(deleteSources);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const { data } = useQuery({
     queryKey: ["source-detail", sourceId],
@@ -70,6 +76,23 @@ export function SourceDetailDrawer({ sourceId, onClose }: Props) {
       qc.invalidateQueries({ queryKey: ["sources"] });
       qc.invalidateQueries({ queryKey: ["source-detail", sourceId] });
       qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const delMut = useMutation({
+    mutationFn: () => delFn({ data: { ids: [sourceId!] } }),
+    onSuccess: (r) => {
+      const res = r as { deleted: string[]; blocked: { source_id: string; active_count: number }[] };
+      if (res.blocked.length) {
+        toast.warning("Not deleted — active atoms derive from this source; withdraw those in Memory first.");
+      } else {
+        toast.success("Source deleted");
+        onClose();
+      }
+      setConfirmOpen(false);
+      qc.invalidateQueries({ queryKey: ["sources"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -135,6 +158,16 @@ export function SourceDetailDrawer({ sourceId, onClose }: Props) {
                   {runMut.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Play className="mr-1.5 h-3.5 w-3.5" />}
                   Run pipeline (Stages 3–12)
                 </Button>
+                {canDelete && (
+                  <Button
+                    size="sm" variant="ghost"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => setConfirmOpen(true)}
+                    disabled={parseMut.isPending || runMut.isPending}
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete source
+                  </Button>
+                )}
               </div>
             )}
 
@@ -174,6 +207,20 @@ export function SourceDetailDrawer({ sourceId, onClose }: Props) {
           </>
         )}
       </SheetContent>
+      <ConfirmDeleteDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Delete this source?"
+        description="This cannot be undone."
+        bullets={[
+          "Removes the source file, all parsed windows/spans, and every pipeline run for this source.",
+          "Deletes derived change sets. Published active atoms are kept but detached.",
+          "Blocked if active atoms still derive from this source — withdraw them first.",
+        ]}
+        confirmLabel="Delete source"
+        loading={delMut.isPending}
+        onConfirm={() => delMut.mutate()}
+      />
     </Sheet>
   );
 }

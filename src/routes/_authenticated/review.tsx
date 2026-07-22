@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/layout/EmptyState";
 import { AtomDetail } from "@/components/atom/AtomDetail";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
@@ -15,13 +16,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ClipboardCheck, Loader2, CheckCircle2, XCircle, Pencil, Wand2, ShieldAlert, ArrowRight, Sparkles } from "lucide-react";
+import { ClipboardCheck, Loader2, CheckCircle2, XCircle, Pencil, Wand2, ShieldAlert, ArrowRight, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   listPendingChangeSets, getChangeSetDetail, approveItem, rejectItem, editThenApprove,
   confirmScopeDimension, resolveConflictOnItem, generateScenariosForItem, applyChangeSetFn,
   listPrecedenceStrategies,
 } from "@/lib/review.functions";
+import { deleteChangeSets } from "@/lib/management.functions";
+import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
+import { SelectionBar } from "@/components/common/SelectionBar";
+import { useMyRoles, hasAnyRole } from "@/hooks/useAuth";
 import type { ProcessAtom } from "@/types/atom";
 
 export const Route = createFileRoute("/_authenticated/review")({
@@ -48,6 +53,32 @@ function Page() {
   const fetchList = useServerFn(listPendingChangeSets);
   const { data: sets, isLoading } = useQuery({ queryKey: ["review-sets"], queryFn: () => fetchList() });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmIds, setConfirmIds] = useState<string[] | null>(null);
+  const { data: roles } = useMyRoles();
+  const canManage = hasAnyRole(roles, ["admin", "curator", "policy_owner"]);
+  const qc = useQueryClient();
+  const delFn = useServerFn(deleteChangeSets);
+
+  const toggle = (id: string) => setSelectedIds((prev) => {
+    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;
+  });
+
+  const itemCountsById = new Map<string, number>((sets ?? []).map((s) => [s.id, s.total ?? 0]));
+  const totalConfirmItems = (confirmIds ?? []).reduce((sum, id) => sum + (itemCountsById.get(id) ?? 0), 0);
+
+  const delMut = useMutation({
+    mutationFn: (ids: string[]) => delFn({ data: { ids } }),
+    onSuccess: (r) => {
+      const res = r as { deleted: string[] };
+      toast.success(`Deleted ${res.deleted.length} change set(s)`);
+      if (selectedId && res.deleted.includes(selectedId)) setSelectedId(null);
+      setSelectedIds(new Set()); setConfirmIds(null);
+      qc.invalidateQueries({ queryKey: ["review-sets"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   return (
     <AppShell title="Review" description="Human governance queue for proposed change sets. Approvals are mandatory before atoms become active.">
@@ -61,9 +92,14 @@ function Page() {
       ) : (
         <div className="space-y-2">
           {sets.map((cs) => (
-            <Card key={cs.id} className="cursor-pointer hover:border-primary/40 transition" onClick={() => setSelectedId(cs.id)}>
+            <Card key={cs.id} className="hover:border-primary/40 transition">
               <CardContent className="flex items-center justify-between p-4">
-                <div>
+                {canManage && (
+                  <div className="mr-3" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox checked={selectedIds.has(cs.id)} onCheckedChange={() => toggle(cs.id)} aria-label="Select change set" />
+                  </div>
+                )}
+                <div className="flex-1 cursor-pointer" onClick={() => setSelectedId(cs.id)}>
                   <div className="text-sm font-medium">{(cs as { sources?: { title?: string } }).sources?.title ?? "Untitled source"}</div>
                   <div className="text-xs text-muted-foreground">{cs.summary} · {new Date(cs.created_at).toLocaleString()}</div>
                 </div>
@@ -72,6 +108,11 @@ function Page() {
                   <Badge variant="outline" className="text-xs">{cs.pending} pending</Badge>
                   {cs.conflict > 0 && <Badge className="bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30 text-xs">{cs.conflict} conflict</Badge>}
                   <Badge variant="secondary" className="text-xs">{cs.status}</Badge>
+                  {canManage && (
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); setConfirmIds([cs.id]); }} aria-label="Delete change set">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                   <ArrowRight className="h-4 w-4 text-muted-foreground" />
                 </div>
               </CardContent>
@@ -79,6 +120,24 @@ function Page() {
           ))}
         </div>
       )}
+
+      {canManage && !selectedId && (
+        <SelectionBar selectedCount={selectedIds.size} onClear={() => setSelectedIds(new Set())}>
+          <Button size="sm" variant="destructive" onClick={() => setConfirmIds(Array.from(selectedIds))}>
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete selected
+          </Button>
+        </SelectionBar>
+      )}
+
+      <ConfirmDeleteDialog
+        open={!!confirmIds}
+        onOpenChange={(o) => !o && setConfirmIds(null)}
+        title={`Delete ${confirmIds?.length ?? 0} change set${confirmIds?.length === 1 ? "" : "s"}?`}
+        description={`Deletes this change set and its ${totalConfirmItems} proposed item(s). Already-published atoms are not affected.`}
+        confirmLabel="Delete change sets"
+        loading={delMut.isPending}
+        onConfirm={() => confirmIds && delMut.mutate(confirmIds)}
+      />
     </AppShell>
   );
 }
