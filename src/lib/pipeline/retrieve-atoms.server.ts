@@ -18,14 +18,17 @@ import type { Database } from "@/integrations/supabase/types";
 import type { ProcessAtom, Precondition, PreconditionOperator, ScopedValue, ActionModality, AuthorityLevel } from "@/types/atom";
 import { rowToAtom } from "@/lib/atom-mapper";
 
+type JsonScalar = string | number | boolean | null;
+export type JsonValue = JsonScalar | JsonValue[] | { [k: string]: JsonValue };
+
 export interface RetrievalContext {
   process?: string | null;
   activity?: string | null;
   role?: string | null;
   organizational_unit?: string | null;
   business_object?: string | null;
-  business_object_attributes?: Record<string, unknown>;
-  case_state?: Record<string, unknown>;
+  business_object_attributes?: Record<string, JsonValue>;
+  case_state?: Record<string, JsonValue>;
   as_of_time?: string | null;
 }
 
@@ -46,7 +49,7 @@ export interface StepRecord {
   out_count: number;
   notes: string[];
   excluded?: { atom_id: string; reason: string }[];
-  detail?: Record<string, unknown>;
+  detail?: Record<string, JsonValue>;
 }
 
 export interface RetrievedAtom {
