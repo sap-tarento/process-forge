@@ -1,12 +1,56 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { chat, parseJsonLoose } from "./llm-gateway.server";
+import { chatJson } from "./llm-gateway.server";
 import { loadLlmSettings, loadActivePrompt } from "./settings.server";
 import { coerceAndValidate } from "./atom-validation.server";
 import { PARSER_VERSION, EXTRACTOR_VERSION } from "./version";
 import type { ProcessAtom } from "@/types/atom";
 
 const DESCRIPTIVE_TYPES = new Set(["EVENT_LOG", "AGENT_TRACE"]);
+
+interface RawAtom {
+  identity?: { atom_id?: unknown; name?: unknown };
+  action?: { operation?: unknown; object?: unknown };
+  provenance?: { quoted_evidence?: unknown };
+  [k: string]: unknown;
+}
+
+function validateExtractionShape(
+  v: unknown,
+): { ok: true; value: { atoms: RawAtom[] } } | { ok: false; errors: string[] } {
+  const errors: string[] = [];
+  if (!v || typeof v !== "object") return { ok: false, errors: ["response is not an object"] };
+  const obj = v as { atoms?: unknown };
+  if (!Array.isArray(obj.atoms)) return { ok: false, errors: ["missing top-level `atoms` array"] };
+  const atoms = obj.atoms as RawAtom[];
+  atoms.forEach((a, i) => {
+    if (!a || typeof a !== "object") {
+      errors.push(`atoms[${i}] is not an object`);
+      return;
+    }
+    const id = a.identity ?? {};
+    if (typeof id.name !== "string" || id.name.trim().length === 0) {
+      errors.push(`atoms[${i}].identity.name is required (non-empty string)`);
+    }
+    if (typeof id.atom_id !== "string" || id.atom_id.trim().length === 0) {
+      errors.push(`atoms[${i}].identity.atom_id is required (dotted lowercase slug)`);
+    }
+    const act = a.action ?? {};
+    if (typeof act.operation !== "string" || act.operation.trim().length === 0) {
+      errors.push(`atoms[${i}].action.operation is required`);
+    }
+    if (typeof act.object !== "string" || act.object.trim().length === 0) {
+      errors.push(`atoms[${i}].action.object is required`);
+    }
+    const prov = a.provenance ?? {};
+    const qe = (prov as { quoted_evidence?: unknown }).quoted_evidence;
+    if (!Array.isArray(qe) || qe.length === 0) {
+      errors.push(`atoms[${i}].provenance.quoted_evidence must have at least one entry`);
+    }
+  });
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, value: { atoms } };
+}
 
 export async function extractAtomsForSource(
   admin: SupabaseClient<Database>,
@@ -61,24 +105,63 @@ export async function extractAtomsForSource(
       IS_DESCRIPTIVE: isDescriptive,
     };
 
-    let modelAtoms: unknown[] = [];
+    let modelAtoms: RawAtom[] = [];
     let spanFailed = false;
+    let failureReason: string | null = null;
+    let rawResponse: string | null = null;
     try {
-      const res = await chat({
-        settings,
-        promptKey: "extraction",
-        promptVersion: prompt.version,
-        json: true,
-        messages: [
-          { role: "system", content: prompt.template },
-          { role: "user", content: JSON.stringify(payload, null, 2) },
-        ],
-      });
-      const parsed = parseJsonLoose<{ atoms?: unknown[] }>(res.content);
-      if (Array.isArray(parsed.atoms)) modelAtoms = parsed.atoms;
+      const { value, result } = await chatJson(
+        {
+          settings,
+          promptKey: "extraction",
+          promptVersion: prompt.version,
+          json: true,
+          messages: [
+            { role: "system", content: prompt.template },
+            { role: "user", content: JSON.stringify(payload, null, 2) },
+          ],
+        },
+        validateExtractionShape,
+      );
+      modelAtoms = value.atoms;
+      rawResponse = result.content;
     } catch (e) {
-      console.error(`extraction failed for span ${s.id}:`, e);
       spanFailed = true;
+      failureReason = e instanceof Error ? e.message : String(e);
+      console.error(`extraction failed for span ${s.id}:`, failureReason);
+    }
+
+    // If the model returned no usable atoms after retry, reject the span and
+    // record the failure — do NOT insert hollow default atoms.
+    if (spanFailed || modelAtoms.length === 0) {
+      const { data: cs } = await admin
+        .from("change_sets")
+        .select("id")
+        .eq("id", changeSetId)
+        .single();
+      if (cs) {
+        await admin.from("change_set_items").insert({
+          change_set_id: changeSetId,
+          operation: "no_change",
+          atom_payload: {} as never,
+          validation_results: [] as never,
+          review_status: "rejected",
+          curator_notes: spanFailed
+            ? `Extraction skipped: model response did not match the ProcessAtom shape after retry. ${failureReason ?? ""}`.trim()
+            : "Extraction returned no atoms for this span.",
+          extraction_debug: {
+            span_id: s.id,
+            span_text: s.span_text,
+            failure_reason: failureReason,
+            raw_response: rawResponse,
+          } as never,
+        });
+      }
+      await admin
+        .from("candidate_spans")
+        .update({ status: "rejected" } as never)
+        .eq("id", s.id);
+      continue;
     }
 
     for (const raw of modelAtoms) {
@@ -107,13 +190,17 @@ export async function extractAtomsForSource(
         validation_results: outcome.atom.quality.validations as never,
         review_status: "pending",
         curator_notes: outcome.passed ? null : `Blocked by validation: ${outcome.issues.join("; ")}`,
+        extraction_debug: {
+          span_id: s.id,
+          raw_atom: raw,
+        } as never,
       });
       if (!error) produced++;
     }
 
     await admin
       .from("candidate_spans")
-      .update({ status: spanFailed ? "rejected" : "accepted" } as never)
+      .update({ status: "accepted" } as never)
       .eq("id", s.id);
   }
 
