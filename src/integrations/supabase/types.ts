@@ -226,15 +226,19 @@ export type Database = {
           change_set_id: string
           conflict_findings: Json
           created_at: string
+          curated_at: string | null
           curator_notes: string | null
           existing_atom: string | null
+          grounded_at: string | null
           id: string
           neighbors: Json
           operation: Database["public"]["Enums"]["change_op"]
+          provenance_bound_at: string | null
           review_status: Database["public"]["Enums"]["review_status"]
           reviewed_at: string | null
           reviewed_by: string | null
           scenarios: Json
+          validated_at: string | null
           validation_results: Json
         }
         Insert: {
@@ -243,15 +247,19 @@ export type Database = {
           change_set_id: string
           conflict_findings?: Json
           created_at?: string
+          curated_at?: string | null
           curator_notes?: string | null
           existing_atom?: string | null
+          grounded_at?: string | null
           id?: string
           neighbors?: Json
           operation: Database["public"]["Enums"]["change_op"]
+          provenance_bound_at?: string | null
           review_status?: Database["public"]["Enums"]["review_status"]
           reviewed_at?: string | null
           reviewed_by?: string | null
           scenarios?: Json
+          validated_at?: string | null
           validation_results?: Json
         }
         Update: {
@@ -260,15 +268,19 @@ export type Database = {
           change_set_id?: string
           conflict_findings?: Json
           created_at?: string
+          curated_at?: string | null
           curator_notes?: string | null
           existing_atom?: string | null
+          grounded_at?: string | null
           id?: string
           neighbors?: Json
           operation?: Database["public"]["Enums"]["change_op"]
+          provenance_bound_at?: string | null
           review_status?: Database["public"]["Enums"]["review_status"]
           reviewed_at?: string | null
           reviewed_by?: string | null
           scenarios?: Json
+          validated_at?: string | null
           validation_results?: Json
         }
         Relationships: [
@@ -376,6 +388,7 @@ export type Database = {
           preceding_paragraph: string | null
           section_context: Json
           source_id: string
+          spans_detected_at: string | null
         }
         Insert: {
           char_end?: number | null
@@ -388,6 +401,7 @@ export type Database = {
           preceding_paragraph?: string | null
           section_context?: Json
           source_id: string
+          spans_detected_at?: string | null
         }
         Update: {
           char_end?: number | null
@@ -400,6 +414,7 @@ export type Database = {
           preceding_paragraph?: string | null
           section_context?: Json
           source_id?: string
+          spans_detected_at?: string | null
         }
         Relationships: [
           {
