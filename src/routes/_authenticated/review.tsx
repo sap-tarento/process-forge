@@ -330,6 +330,20 @@ function ItemCard({ item, csId }: { item: ReviewItem; csId: string }) {
 interface NeighborRef { atom_db_id: string; atom_id: string; version: number; score?: number }
 interface ConflictFinding { neighbor_atom_id: string; verdict: string; source: string; detail: { reason: string } }
 
+type ScopeDimKey =
+  | "process" | "activities" | "roles" | "business_objects"
+  | "organizational_scope.company_codes"
+  | "organizational_scope.subsidiaries"
+  | "organizational_scope.plants";
+
+function readScopeValues(atom: ProcessAtom, key: ScopeDimKey): string[] {
+  const app = atom.applicability as unknown as Record<string, { value?: unknown } | undefined> | undefined;
+  const raw = key.startsWith("organizational_scope.")
+    ? ((app?.organizational_scope as unknown as Record<string, { value?: unknown } | undefined> | undefined)?.[key.split(".")[1]])?.value
+    : app?.[key]?.value;
+  return Array.isArray(raw) ? (raw as string[]) : [];
+}
+
 function RejectDialog({ itemId, onClose }: { itemId: string; onClose: () => void }) {
   const [reason, setReason] = useState("");
   const reject = useServerFn(rejectItem);
