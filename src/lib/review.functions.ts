@@ -7,7 +7,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { ProcessAtom } from "@/types/atom";
 
-async function assertRole(context: { supabase: { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown }> }; userId: string }, roles: string[]) {
+async function assertRole(context: { supabase: any; userId: string }, roles: string[]) {
   const { data } = await context.supabase.rpc("has_any_role", { _roles: roles, _user_id: context.userId });
   if (!data) throw new Error(`Forbidden: requires one of ${roles.join(", ")}`);
 }
