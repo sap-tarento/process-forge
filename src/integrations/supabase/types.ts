@@ -229,6 +229,7 @@ export type Database = {
           curated_at: string | null
           curator_notes: string | null
           existing_atom: string | null
+          extraction_debug: Json | null
           grounded_at: string | null
           id: string
           neighbors: Json
@@ -250,6 +251,7 @@ export type Database = {
           curated_at?: string | null
           curator_notes?: string | null
           existing_atom?: string | null
+          extraction_debug?: Json | null
           grounded_at?: string | null
           id?: string
           neighbors?: Json
@@ -271,6 +273,7 @@ export type Database = {
           curated_at?: string | null
           curator_notes?: string | null
           existing_atom?: string | null
+          extraction_debug?: Json | null
           grounded_at?: string | null
           id?: string
           neighbors?: Json
