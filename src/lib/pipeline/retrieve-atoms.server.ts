@@ -352,6 +352,9 @@ export async function retrieveAtoms(
 
   // Step 7 — versions & precedence (versions already resolved via bitemporal filter).
   const suppressed = new Map<string, string>();
+  const precedenceNotes = new Map<string, string>();
+  const strategyDecisions: { pair: [string, string]; strategy: string; winner: string; loser: string; reason: string }[] = [];
+  const unresolvedPairs: { pair: [string, string]; tried: string[]; reason: string }[] = [];
   {
     const { data: openConflicts } = await admin
       .from("conflicts")
@@ -359,27 +362,112 @@ export async function retrieveAtoms(
       .eq("status", "open" as never);
     const { data: strategies } = await admin
       .from("precedence_strategies")
-      .select("name, priority_order, enabled")
+      .select("name, priority_order, enabled, created_at")
       .eq("enabled", true)
+      .order("priority_order", { ascending: true })
       .order("created_at", { ascending: true });
+    const orderedStrategies = (strategies ?? []) as Array<{ name: string }>;
+
+    // Preload source effective dates for atoms present in the current set (for "later_effective_date_overrides").
+    const sourceEffective = new Map<string, string | null>(); // atom_id -> ISO date or null
+    {
+      const sourceIds = Array.from(
+        new Set(
+          afterRels
+            .map((c) => (c.row as { source_id?: string | null }).source_id)
+            .filter((s): s is string => !!s),
+        ),
+      );
+      if (sourceIds.length) {
+        const { data: srcRows } = await admin
+          .from("sources")
+          .select("id, effective_date")
+          .in("id", sourceIds);
+        const byId = new Map(((srcRows ?? []) as Array<{ id: string; effective_date: string | null }>).map((r) => [r.id, r.effective_date]));
+        for (const c of afterRels) {
+          const sid = (c.row as { source_id?: string | null }).source_id ?? null;
+          sourceEffective.set(c.atom.identity.atom_id, sid ? (byId.get(sid) ?? null) : null);
+        }
+      }
+    }
+
+    const getCand = (id: string) => afterRels.find((x) => x.atom.identity.atom_id === id);
+    const specificity = (id: string): number => {
+      const cand = getCand(id);
+      if (!cand) return 0;
+      const dims = [
+        cand.atom.applicability?.process,
+        cand.atom.applicability?.activities,
+        cand.atom.applicability?.roles,
+        cand.atom.applicability?.business_objects,
+      ];
+      return dims.filter((d) => d && d.status === "explicit" && (d.value?.length ?? 0) > 0).length;
+    };
+    const authorityOrder: Record<AuthorityLevel, number> = { regulatory: 5, board: 4, executive: 3, functional: 2, local: 1 };
+    const effectiveDate = (id: string): number => {
+      const cand = getCand(id);
+      if (!cand) return 0;
+      const srcDate = sourceEffective.get(id);
+      const iso = srcDate || cand.atom.version.valid_from;
+      const t = iso ? Date.parse(iso) : NaN;
+      return Number.isFinite(t) ? t : 0;
+    };
+
+    type Verdict = { winner: string; loser: string; reason: string } | null;
+    const apply = (strat: string, a: string, b: string): Verdict => {
+      switch (strat) {
+        case "more_specific_rule_overrides_general_rule": {
+          const sa = specificity(a), sb = specificity(b);
+          if (sa === sb) return null;
+          const winner = sa > sb ? a : b;
+          const loser = winner === a ? b : a;
+          return { winner, loser, reason: `specificity ${Math.max(sa, sb)} > ${Math.min(sa, sb)}` };
+        }
+        case "higher_authority_overrides": {
+          const la = authorityOrder[getCand(a)?.atom.governance?.authority_level ?? "local"];
+          const lb = authorityOrder[getCand(b)?.atom.governance?.authority_level ?? "local"];
+          if (la === lb) return null;
+          const winner = la > lb ? a : b;
+          const loser = winner === a ? b : a;
+          return { winner, loser, reason: `authority ${getCand(winner)?.atom.governance?.authority_level} > ${getCand(loser)?.atom.governance?.authority_level}` };
+        }
+        case "later_effective_date_overrides": {
+          const da = effectiveDate(a), db = effectiveDate(b);
+          if (!da || !db || da === db) return null;
+          const winner = da > db ? a : b;
+          const loser = winner === a ? b : a;
+          return { winner, loser, reason: `effective date ${new Date(Math.max(da, db)).toISOString().slice(0, 10)} > ${new Date(Math.min(da, db)).toISOString().slice(0, 10)}` };
+        }
+        default:
+          return null; // unknown/custom strategy — cannot auto-decide
+      }
+    };
+
     const idSet = new Set(afterRels.map((c) => c.atom.identity.atom_id));
     for (const c of (openConflicts ?? []) as Array<{ conflict_kind: string; atoms: { atom_id: string } | null; atom_b_atom_id: string }>) {
       const a = c.atoms?.atom_id;
       const b = c.atom_b_atom_id;
       if (!a || !b || !idSet.has(a) || !idSet.has(b)) continue;
-      // Simple auto-resolution: pick a strategy verdict; if none, leave both & annotate.
-      const applied = (strategies ?? []).find((s) => s.name === "more_specific_rule_overrides_general_rule");
-      if (applied) {
-        // "More specific" heuristic: whichever has more concrete (non-null) applicability values wins.
-        const specificity = (id: string) => {
-          const cand = afterRels.find((x) => x.atom.identity.atom_id === id);
-          if (!cand) return 0;
-          const dims = [cand.atom.applicability?.process, cand.atom.applicability?.activities, cand.atom.applicability?.roles, cand.atom.applicability?.business_objects];
-          return dims.filter((d) => d && d.status === "explicit" && (d.value?.length ?? 0) > 0).length;
-        };
-        const winner = specificity(a) >= specificity(b) ? a : b;
-        const loser = winner === a ? b : a;
-        suppressed.set(loser, `Suppressed by strategy "more_specific_rule_overrides_general_rule" (winner: ${winner})`);
+      if (suppressed.has(a) || suppressed.has(b)) continue;
+      // Iterate enabled strategies in configured priority order; first-decides.
+      const tried: string[] = [];
+      let decided: { strategy: string; winner: string; loser: string; reason: string } | null = null;
+      for (const s of orderedStrategies) {
+        tried.push(s.name);
+        const v = apply(s.name, a, b);
+        if (v) { decided = { strategy: s.name, ...v }; break; }
+      }
+      if (decided) {
+        suppressed.set(
+          decided.loser,
+          `Suppressed by strategy "${decided.strategy}" — ${decided.reason} (winner: ${decided.winner})`,
+        );
+        strategyDecisions.push({ pair: [a, b], strategy: decided.strategy, winner: decided.winner, loser: decided.loser, reason: decided.reason });
+      } else {
+        const note = `conflict unresolved — human decision required (tried: ${tried.length ? tried.join(", ") : "none enabled"})`;
+        precedenceNotes.set(a, note);
+        precedenceNotes.set(b, note);
+        unresolvedPairs.push({ pair: [a, b], tried, reason: note });
       }
     }
   }
@@ -390,8 +478,13 @@ export async function retrieveAtoms(
     notes: [
       `Bitemporal filter applied (valid at ${asOf.toISOString()}); newest version per atom_id kept.`,
       suppressed.size ? `${suppressed.size} atom(s) suppressed via enabled precedence strategies.` : `No conflicts to resolve among the current set.`,
+      unresolvedPairs.length ? `${unresolvedPairs.length} conflict pair(s) unresolved by any enabled strategy — both atoms kept and flagged for human decision.` : `All applicable conflicts decided by an enabled strategy.`,
     ],
     excluded: Array.from(suppressed.entries()).map(([atom_id, reason]) => ({ atom_id, reason })),
+    detail: {
+      strategy_decisions: strategyDecisions as unknown as JsonValue,
+      unresolved_pairs: unresolvedPairs as unknown as JsonValue,
+    },
   });
 
   // Step 8 — rerank by necessity + authority + semantic
@@ -417,6 +510,7 @@ export async function retrieveAtoms(
         predicate_results: predResults.get(c.atom.identity.atom_id) ?? [],
         semantic_score: +semantic.toFixed(4),
         relationship_pull: pulledInfo?.rel,
+        precedence_note: precedenceNotes.get(c.atom.identity.atom_id),
       },
       atom: c.atom,
     };
