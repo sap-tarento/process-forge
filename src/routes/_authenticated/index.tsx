@@ -28,7 +28,7 @@ function Dashboard() {
         supabase.from("atoms").select("id", { count: "exact", head: true }),
         supabase.from("atoms").select("status"),
         supabase.from("sources").select("id", { count: "exact", head: true }),
-        supabase.from("conflicts").select("id", { count: "exact", head: true }).eq("resolved", false),
+        supabase.from("conflicts").select("id", { count: "exact", head: true }).eq("status", "open"),
         supabase.from("change_sets").select("id", { count: "exact", head: true }).eq("status", "pending_review"),
         supabase.from("sources").select("id, title, source_type, authority_class, created_at").order("created_at", { ascending: false }).limit(5),
       ]);
