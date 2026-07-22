@@ -12,10 +12,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Settings as SettingsIcon, Save, CheckCircle2 } from "lucide-react";
+import { Settings as SettingsIcon, Save, CheckCircle2, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useMyRoles, hasAnyRole } from "@/hooks/useAuth";
 import { updateLlmSettings, savePromptVersion, activatePromptVersion } from "@/lib/settings.functions";
+import { loadDemoScenario } from "@/lib/runtime.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -48,9 +49,46 @@ function Page() {
           <PromptEditor promptKey="span_detection" title="Span detection prompt" description="Stage 4 — identifies candidate normative spans (explicit and implicit)." />
           <Separator />
           <PromptEditor promptKey="extraction" title="Extraction prompt" description="Stages 5–6 — atomic decomposition + Φ / A / P extraction into ProcessAtom JSON." />
+          <Separator />
+          <DemoScenarioCard />
         </div>
       )}
     </AppShell>
+  );
+}
+
+function DemoScenarioCard() {
+  const seedFn = useServerFn(loadDemoScenario);
+  const qc = useQueryClient();
+  const mut = useMutation({
+    mutationFn: () => seedFn({ data: { confirm: true } }),
+    onSuccess: (r) => {
+      const o = r as unknown as { atoms_added: number; sources_added: number; vocabulary_added: number; relationships_added: number; already_present: boolean };
+      if (o.already_present) toast.success("Demo scenario already loaded (idempotent — no changes).");
+      else toast.success(`Loaded demo: +${o.sources_added} sources, +${o.atoms_added} atoms, +${o.vocabulary_added} vocab, +${o.relationships_added} rels.`);
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-5">
+      <div className="mb-3 flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-semibold flex items-center gap-1.5"><Sparkles className="h-4 w-4" /> Demo scenario</h3>
+          <p className="mt-1 text-xs text-muted-foreground max-w-2xl">
+            Loads the paper's running example: procurement + finance vocabulary, two normative policy sources
+            (with an implicit rule, a heading-scoped section, a threshold, and an exception), five ACTIVE atoms
+            with full provenance / evidence / tags / governance / quality, an EXCEPTION_TO relationship, and the{" "}
+            <span className="font-mono">more_specific_rule_overrides_general_rule</span> precedence strategy.
+            Idempotent — safe to re-run. Does <span className="text-foreground font-medium">not</span> auto-run the LLM pipeline.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => mut.mutate()} disabled={mut.isPending}>
+          {mut.isPending ? "Loading…" : "Load demo scenario"}
+        </Button>
+      </div>
+    </div>
   );
 }
 
