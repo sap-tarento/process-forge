@@ -221,42 +221,54 @@ export type Database = {
       }
       change_set_items: {
         Row: {
+          atom_embedding: string | null
           atom_payload: Json
           change_set_id: string
+          conflict_findings: Json
           created_at: string
           curator_notes: string | null
           existing_atom: string | null
           id: string
+          neighbors: Json
           operation: Database["public"]["Enums"]["change_op"]
           review_status: Database["public"]["Enums"]["review_status"]
           reviewed_at: string | null
           reviewed_by: string | null
+          scenarios: Json
           validation_results: Json
         }
         Insert: {
+          atom_embedding?: string | null
           atom_payload?: Json
           change_set_id: string
+          conflict_findings?: Json
           created_at?: string
           curator_notes?: string | null
           existing_atom?: string | null
           id?: string
+          neighbors?: Json
           operation: Database["public"]["Enums"]["change_op"]
           review_status?: Database["public"]["Enums"]["review_status"]
           reviewed_at?: string | null
           reviewed_by?: string | null
+          scenarios?: Json
           validation_results?: Json
         }
         Update: {
+          atom_embedding?: string | null
           atom_payload?: Json
           change_set_id?: string
+          conflict_findings?: Json
           created_at?: string
           curator_notes?: string | null
           existing_atom?: string | null
           id?: string
+          neighbors?: Json
           operation?: Database["public"]["Enums"]["change_op"]
           review_status?: Database["public"]["Enums"]["review_status"]
           reviewed_at?: string | null
           reviewed_by?: string | null
+          scenarios?: Json
           validation_results?: Json
         }
         Relationships: [
@@ -464,6 +476,57 @@ export type Database = {
           provider?: string
           singleton?: boolean
           updated_at?: string
+        }
+        Relationships: []
+      }
+      memory_state: {
+        Row: {
+          generation: number
+          id: boolean
+          updated_at: string
+        }
+        Insert: {
+          generation?: number
+          id?: boolean
+          updated_at?: string
+        }
+        Update: {
+          generation?: number
+          id?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          atom_id: string | null
+          change_set_item_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          read: boolean
+          recipient: string
+          summary: string
+        }
+        Insert: {
+          atom_id?: string | null
+          change_set_item_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          read?: boolean
+          recipient: string
+          summary: string
+        }
+        Update: {
+          atom_id?: string | null
+          change_set_item_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          read?: boolean
+          recipient?: string
+          summary?: string
         }
         Relationships: []
       }
