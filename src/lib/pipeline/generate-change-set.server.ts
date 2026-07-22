@@ -105,6 +105,7 @@ export async function generateChangeSet(
     let curator_notes = "No overlap detected against current memory.";
 
     const conflict = findings.find((f) => f.verdict === "overlap_conflict");
+    const inconclusive = findings.find((f) => f.verdict === "inconclusive");
     const duplicate = findings.find((f) => f.verdict === "duplicate");
     const lineage = lineageByAtomId.get(atom.identity.atom_id);
 
@@ -112,6 +113,13 @@ export async function generateChangeSet(
       operation = "conflict_review";
       existing_atom = conflict.neighbor_db_id;
       curator_notes = `Conflict with ${conflict.neighbor_atom_id}: ${conflict.detail.reason}`;
+      out.conflict_review++;
+    } else if (inconclusive) {
+      // Ambiguity principle: unknown outcome must go to human review, never
+      // silently be treated as compatible.
+      operation = "conflict_review";
+      existing_atom = inconclusive.neighbor_db_id;
+      curator_notes = `Inconclusive vs ${inconclusive.neighbor_atom_id}: ${inconclusive.detail.reason}`;
       out.conflict_review++;
     } else if (duplicate) {
       const existing = neighborsById.get(duplicate.neighbor_db_id);
