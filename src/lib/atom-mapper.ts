@@ -37,7 +37,16 @@ export function rowToAtom(row: AtomRow): ProcessAtom & { db_id: string } {
     domain_tags: (row.domain_tags as ProcessAtom["domain_tags"]) ?? ({} as ProcessAtom["domain_tags"]),
     provenance: (row.provenance as ProcessAtom["provenance"]) ?? ({} as ProcessAtom["provenance"]),
     governance: (row.governance as ProcessAtom["governance"]) ?? ({} as ProcessAtom["governance"]),
-    quality: (row.quality as ProcessAtom["quality"]) ?? ({ validations: [] } as ProcessAtom["quality"]),
+    relationships: [],
+    quality:
+      (row.quality as ProcessAtom["quality"]) ??
+      ({
+        action_confidence: 0,
+        applicability_confidence: 0,
+        purpose_confidence: 0,
+        atomicity_score: 0,
+        validations: [],
+      } as ProcessAtom["quality"]),
   };
 }
 
