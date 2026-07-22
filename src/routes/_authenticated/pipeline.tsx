@@ -1,13 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { Workflow, CheckCircle2, XCircle, Circle, Loader2, MinusCircle, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
+import { Workflow, CheckCircle2, XCircle, Circle, Loader2, MinusCircle, ChevronRight, Play, Ban } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { PIPELINE_STAGES, STAGE_LABELS, STAGE_SHORT_LABELS, type PipelineStage } from "@/types/atom";
 import { cn } from "@/lib/utils";
+import { advancePipelineRun, markPipelineRunFailed } from "@/lib/pipeline/run-pipeline.functions";
+import { useMyRoles, hasAnyRole } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/_authenticated/pipeline")({
   head: () => ({
@@ -138,6 +143,39 @@ function Page() {
 }
 
 function StageTracker({ run, stages }: { run: PipelineRun; stages: StageRow[] }) {
+  const qc = useQueryClient();
+  const { data: roles } = useMyRoles();
+  const canRun = hasAnyRole(roles, ["admin", "curator", "policy_owner"]);
+  const advanceFn = useServerFn(advancePipelineRun);
+  const failFn = useServerFn(markPipelineRunFailed);
+
+  const resumeMut = useMutation({
+    mutationFn: async () => {
+      toast.info("Resuming pipeline — keep this tab open.");
+      for (let i = 0; i < 500; i++) {
+        const step = await advanceFn({ data: { runId: run.id } });
+        qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+        qc.invalidateQueries({ queryKey: ["pipeline-run-stages", run.id] });
+        if (step.run_status === "succeeded") return;
+        if (step.run_status === "failed") throw new Error("Pipeline failed.");
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      throw new Error("Did not complete within safety cap. Resume again.");
+    },
+    onSuccess: () => toast.success("Pipeline complete."),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const failMut = useMutation({
+    mutationFn: () => failFn({ data: { runId: run.id, reason: "Marked as failed by curator." } }),
+    onSuccess: () => {
+      toast.success("Run marked as failed.");
+      qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+      qc.invalidateQueries({ queryKey: ["pipeline-run-stages", run.id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const stageMap = new Map(stages.map((s) => [s.stage, s]));
   const rows = PIPELINE_STAGES.map((stage, i) => ({
     idx: i + 1,
@@ -154,11 +192,32 @@ function StageTracker({ run, stages }: { run: PipelineRun; stages: StageRow[] })
             run · {run.id.slice(0, 8)} · started {new Date(run.started_at).toLocaleString()}
           </div>
         </div>
-        <Badge
-          variant={run.status === "succeeded" ? "default" : run.status === "failed" ? "destructive" : "secondary"}
-        >
-          {run.status}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant={run.status === "succeeded" ? "default" : run.status === "failed" ? "destructive" : "secondary"}
+          >
+            {run.status}
+          </Badge>
+          {canRun && run.status === "running" && (
+            <>
+              <Button size="sm" variant="outline" disabled={resumeMut.isPending} onClick={() => resumeMut.mutate()}>
+                {resumeMut.isPending ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Play className="mr-1.5 h-3 w-3" />}
+                Resume
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={failMut.isPending}
+                onClick={() => {
+                  if (confirm("Mark this run as failed? Stage progress is preserved.")) failMut.mutate();
+                }}
+              >
+                <Ban className="mr-1.5 h-3 w-3" />
+                Mark failed
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {run.error && (
