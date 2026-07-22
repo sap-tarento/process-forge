@@ -35,7 +35,8 @@ function findBlockingFields(atom: ProcessAtom): string[] {
   // present and did not pass, publication is refused.
   const groundedness = (atom.quality?.validations ?? []).find((v) => v.layer === "groundedness");
   if (groundedness && !groundedness.passed) {
-    blockers.push(...(groundedness.messages?.length ? groundedness.messages.map((m) => `groundedness: ${m}`) : ["groundedness: unsupported field(s)"]));
+    const issues = groundedness.issues ?? [];
+    blockers.push(...(issues.length ? issues.map((m) => `groundedness: ${m}`) : ["groundedness: unsupported field(s)"]));
   }
   // Purpose derivation must not be unknown when set as authoritative for anything else
   if (atom.purpose?.derivation === "unknown" && atom.purpose?.text) {
