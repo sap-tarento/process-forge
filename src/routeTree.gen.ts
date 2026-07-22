@@ -21,6 +21,7 @@ import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedMemoryRouteImport } from './routes/_authenticated/memory'
 import { Route as AuthenticatedGovernanceRouteImport } from './routes/_authenticated/governance'
 import { Route as AuthenticatedConflictsRouteImport } from './routes/_authenticated/conflicts'
+import { Route as AuthenticatedAtomsIdRouteImport } from './routes/_authenticated/atoms.$id'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -81,6 +82,11 @@ const AuthenticatedConflictsRoute = AuthenticatedConflictsRouteImport.update({
   path: '/conflicts',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAtomsIdRoute = AuthenticatedAtomsIdRouteImport.update({
+  id: '/atoms/$id',
+  path: '/atoms/$id',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/runtime': typeof AuthenticatedRuntimeRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/sources': typeof AuthenticatedSourcesRoute
+  '/atoms/$id': typeof AuthenticatedAtomsIdRoute
 }
 export interface FileRoutesByTo {
   '/about': typeof AboutRoute
@@ -107,6 +114,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/sources': typeof AuthenticatedSourcesRoute
   '/': typeof AuthenticatedIndexRoute
+  '/atoms/$id': typeof AuthenticatedAtomsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -122,6 +130,7 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/sources': typeof AuthenticatedSourcesRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/atoms/$id': typeof AuthenticatedAtomsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -137,6 +146,7 @@ export interface FileRouteTypes {
     | '/runtime'
     | '/settings'
     | '/sources'
+    | '/atoms/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/about'
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sources'
     | '/'
+    | '/atoms/$id'
   id:
     | '__root__'
     | '/_authenticated'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/sources'
     | '/_authenticated/'
+    | '/_authenticated/atoms/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -258,6 +270,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedConflictsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/atoms/$id': {
+      id: '/_authenticated/atoms/$id'
+      path: '/atoms/$id'
+      fullPath: '/atoms/$id'
+      preLoaderRoute: typeof AuthenticatedAtomsIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -271,6 +290,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedSourcesRoute: typeof AuthenticatedSourcesRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedAtomsIdRoute: typeof AuthenticatedAtomsIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -283,6 +303,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedSourcesRoute: AuthenticatedSourcesRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedAtomsIdRoute: AuthenticatedAtomsIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
