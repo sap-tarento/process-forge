@@ -102,7 +102,7 @@ export async function generateChangeSet(
 
     let operation: ChangeOp = "add";
     let existing_atom: string | null = null;
-    let rationale = "No overlap detected against current memory.";
+    let curator_notes = "No overlap detected against current memory.";
 
     const conflict = findings.find((f) => f.verdict === "overlap_conflict");
     const duplicate = findings.find((f) => f.verdict === "duplicate");
@@ -111,24 +111,24 @@ export async function generateChangeSet(
     if (conflict) {
       operation = "conflict_review";
       existing_atom = conflict.neighbor_db_id;
-      rationale = `Conflict with ${conflict.neighbor_atom_id}: ${conflict.detail.reason}`;
+      curator_notes = `Conflict with ${conflict.neighbor_atom_id}: ${conflict.detail.reason}`;
       out.conflict_review++;
     } else if (duplicate) {
       const existing = neighborsById.get(duplicate.neighbor_db_id);
       existing_atom = duplicate.neighbor_db_id;
       if (existing && isImprovement(atom, existing)) {
         operation = "modify";
-        rationale = `Improves duplicate ${duplicate.neighbor_atom_id} (more evidence or tighter scope).`;
+        curator_notes = `Improves duplicate ${duplicate.neighbor_atom_id} (more evidence or tighter scope).`;
         out.modify++;
       } else {
         operation = "no_change";
-        rationale = `Exact duplicate of ${duplicate.neighbor_atom_id} — nothing new to record.`;
+        curator_notes = `Exact duplicate of ${duplicate.neighbor_atom_id} — nothing new to record.`;
         out.no_change++;
       }
     } else if (lineage) {
       operation = "modify";
       existing_atom = lineage.id;
-      rationale = `Supersedes existing lineage ${lineage.atom_id} v${lineage.version} from a newer source.`;
+      curator_notes = `Supersedes existing lineage ${lineage.atom_id} v${lineage.version} from a newer source.`;
       out.modify++;
     } else {
       out.add++;
@@ -136,7 +136,7 @@ export async function generateChangeSet(
 
     await admin
       .from("change_set_items")
-      .update({ operation, existing_atom, rationale } as never)
+      .update({ operation, existing_atom, curator_notes } as never)
       .eq("id", item.id);
   }
 

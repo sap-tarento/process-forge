@@ -149,7 +149,7 @@ interface ReviewItem {
   id: string;
   operation: string | null;
   review_status: string;
-  rationale: string | null;
+  curator_notes: string | null;
   existing_atom: string | null;
   atom_payload: unknown;
   neighbors: unknown[];
@@ -193,7 +193,7 @@ function ItemCard({ item, csId }: { item: ReviewItem; csId: string }) {
               <CardTitle className="text-base">{atom.identity?.name}</CardTitle>
               <span className="font-mono text-xs text-muted-foreground">{atom.identity?.atom_id}</span>
             </div>
-            {item.rationale && <div className="mt-1 text-xs text-muted-foreground">{item.rationale}</div>}
+            {item.curator_notes && <div className="mt-1 text-xs text-muted-foreground">{item.curator_notes}</div>}
           </div>
           <div className="flex items-center gap-1">
             {decided ? (
@@ -226,7 +226,7 @@ function ItemCard({ item, csId }: { item: ReviewItem; csId: string }) {
             {/* Scope confirmation strip */}
             <div className="mb-3 space-y-1.5">
               {(["process","activities","roles","business_objects"] as const).map((k) => {
-                const sv = (atom.applicability as Record<string, { requires_review?: boolean; status?: string; value?: unknown }> | undefined)?.[k];
+                const sv = (atom.applicability as unknown as Record<string, { requires_review?: boolean; status?: string; value?: unknown }> | undefined)?.[k];
                 if (!sv?.requires_review) return null;
                 return (
                   <Alert key={k} className="py-2">
@@ -309,7 +309,7 @@ function ItemCard({ item, csId }: { item: ReviewItem; csId: string }) {
       {rejectOpen && <RejectDialog itemId={item.id} onClose={() => { setRejectOpen(false); invalidate(); }} />}
       {editOpen && <EditDialog itemId={item.id} atom={atom} onClose={() => { setEditOpen(false); invalidate(); }} />}
       {resolveOpen && <ResolveDialog itemId={item.id} findings={conflictFindings} onClose={() => { setResolveOpen(false); invalidate(); }} />}
-      {confirmDim && <ConfirmScopeDialog itemId={item.id} dim={confirmDim.key} current={((atom.applicability as Record<string, { value?: string[] }>)[confirmDim.key])?.value ?? []} onClose={() => { setConfirmDim(null); invalidate(); }} />}
+      {confirmDim && <ConfirmScopeDialog itemId={item.id} dim={confirmDim.key} current={((atom.applicability as unknown as Record<string, { value?: string[] }>)[confirmDim.key])?.value ?? []} onClose={() => { setConfirmDim(null); invalidate(); }} />}
     </Card>
   );
 }
@@ -424,7 +424,7 @@ function ResolveDialog({ itemId, findings, onClose }: { itemId: string; findings
     onSuccess: () => { toast.success("Conflict resolved"); onClose(); },
     onError: (e: Error) => toast.error(e.message),
   });
-  const recommended = useMemo(() => (strategies?.[0] as { key?: string })?.key ?? "", [strategies]);
+  const recommended = useMemo(() => (strategies?.[0] as { name?: string })?.name ?? "", [strategies]);
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-2xl">
@@ -442,7 +442,7 @@ function ResolveDialog({ itemId, findings, onClose }: { itemId: string; findings
             <Select value={strategy} onValueChange={setStrategy}>
               <SelectTrigger><SelectValue placeholder={strategies?.length ? "Choose…" : "No strategies enabled"} /></SelectTrigger>
               <SelectContent>
-                {(strategies ?? []).map((s) => <SelectItem key={(s as { key: string }).key} value={(s as { key: string }).key}>{(s as { label: string }).label}</SelectItem>)}
+                {(strategies ?? []).map((s) => <SelectItem key={(s as { name: string }).name} value={(s as { name: string }).name}>{(s as { name: string }).name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

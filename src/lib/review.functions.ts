@@ -66,7 +66,7 @@ export const rejectItem = createServerFn({ method: "POST" })
         review_status: "rejected",
         reviewed_by: context.userId,
         reviewed_at: new Date().toISOString(),
-        rationale: data.reason,
+        curator_notes: data.reason,
       } as never)
       .eq("id", data.itemId);
     await supabaseAdmin.from("audit_events").insert({
@@ -153,13 +153,13 @@ export const resolveConflictOnItem = createServerFn({ method: "POST" })
       await supabaseAdmin.from("change_set_items").update({
         review_status: "rejected", operation: "no_change",
         reviewed_by: context.userId, reviewed_at: new Date().toISOString(),
-        rationale: `Conflict resolved in favour of existing atom via ${data.strategy}: ${data.reason}`,
+        curator_notes: `Conflict resolved in favour of existing atom via ${data.strategy}: ${data.reason}`,
       } as never).eq("id", data.itemId);
     } else {
       await supabaseAdmin.from("change_set_items").update({
         review_status: "approved", operation: "modify", existing_atom: conflict.neighbor_db_id,
         reviewed_by: context.userId, reviewed_at: new Date().toISOString(),
-        rationale: `Conflict resolved in favour of draft via ${data.strategy}: ${data.reason}`,
+        curator_notes: `Conflict resolved in favour of draft via ${data.strategy}: ${data.reason}`,
       } as never).eq("id", data.itemId);
     }
     await supabaseAdmin.from("audit_events").insert({
@@ -231,7 +231,7 @@ export const getChangeSetDetail = createServerFn({ method: "POST" })
       .select("id, source_id, status, summary, created_at, sources(id, title, source_type, authority_class)")
       .eq("id", data.changeSetId).single();
     const { data: items } = await supabaseAdmin.from("change_set_items")
-      .select("id, operation, review_status, rationale, existing_atom, atom_payload, neighbors, conflict_findings, scenarios, reviewed_at, reviewed_by")
+      .select("id, operation, review_status, curator_notes, existing_atom, atom_payload, neighbors, conflict_findings, scenarios, reviewed_at, reviewed_by")
       .eq("change_set_id", data.changeSetId)
       .order("created_at", { ascending: true });
     return { changeSet: cs, items: items ?? [] };
@@ -242,7 +242,7 @@ export const listPrecedenceStrategies = createServerFn({ method: "GET" })
   .handler(async () => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data } = await supabaseAdmin.from("precedence_strategies")
-      .select("id, key, label, description, priority, enabled")
-      .eq("enabled", true).order("priority", { ascending: true });
+      .select("id, name, description, priority_order, enabled")
+      .eq("enabled", true).order("priority_order", { ascending: true });
     return data ?? [];
   });
