@@ -24,6 +24,77 @@ const KNOWLEDGE_TYPES = new Set<KnowledgeType>([
 
 const WILDCARDS = ["*", "all", "any", "everyone", "everywhere"];
 
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{Letter}\p{Number}\s._-]+/gu, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
+function titleCase(s: string): string {
+  return s.replace(/\b([a-z])/g, (m) => m.toUpperCase());
+}
+
+function modalityVerb(m: "MUST" | "MUST_NOT" | "MAY" | null): string {
+  if (m === "MUST_NOT") return "must not";
+  if (m === "MAY") return "may";
+  return "must";
+}
+
+function shortHash(input: string): string {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) {
+    h = (h * 31 + input.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(36).slice(0, 8);
+}
+
+function deriveName(
+  action: { modality: "MUST" | "MUST_NOT" | "MAY" | null; actor: string; operation: string; object: string },
+  quotedEvidence: unknown[],
+): string {
+  const parts = [action.actor, modalityVerb(action.modality), action.operation, action.object]
+    .map((p) => (p ?? "").toString().trim())
+    .filter((p) => p.length > 0);
+  if (parts.length >= 3) {
+    return titleCase(parts.join(" ")).slice(0, 140);
+  }
+  const firstQuote = quotedEvidence.find((q) => q && typeof q === "object" && typeof (q as { text?: unknown }).text === "string") as
+    | { text: string }
+    | undefined;
+  if (firstQuote) {
+    const words = firstQuote.text.trim().split(/\s+/).slice(0, 8).join(" ");
+    if (words.length > 0) return words;
+  }
+  return "Candidate atom (unnamed by extractor)";
+}
+
+function deriveAtomId(
+  domainTags: Record<string, unknown>,
+  action: { operation: string; object: string; actor: string },
+  fallbackSeed: string,
+): string {
+  const firstOf = (key: string): string | null => {
+    const arr = domainTags[key];
+    if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === "string") return arr[0];
+    return null;
+  };
+  const domain =
+    firstOf("corporate_function") ??
+    firstOf("process") ??
+    firstOf("end_to_end_process") ??
+    firstOf("business_object") ??
+    "unclassified";
+  const object = action.object || firstOf("business_object") || action.actor || "rule";
+  const op = action.operation || "rule";
+  const parts = [slugify(domain), slugify(object), slugify(op)].filter((p) => p.length > 0);
+  if (parts.length >= 2) return parts.join(".");
+  return `unclassified.${shortHash(fallbackSeed).slice(0, 6)}.rule`;
+}
+
 function coerceScopedValue(raw: unknown): ScopedValue {
   if (!raw || typeof raw !== "object") {
     return { value: null, status: "not_stated", requires_review: true };
@@ -169,8 +240,19 @@ export function coerceAndValidate(raw: unknown, meta: {
 
   const atom: ProcessAtom = {
     identity: {
-      atom_id: atomId ?? `unclassified.${meta.source_id.slice(0, 8)}.rule-${Date.now()}`,
-      name: name ?? "Unnamed candidate atom",
+      atom_id:
+        atomId ??
+        deriveAtomId(
+          domainTags,
+          { operation, object, actor },
+          `${meta.source_id}:${meta.page ?? ""}:${meta.section ?? ""}:${operation}:${object}`,
+        ),
+      name:
+        name ??
+        deriveName(
+          { modality, actor, operation, object },
+          quotedEvidence,
+        ),
     },
     version: {
       version: 1,
